@@ -1,0 +1,5 @@
+# Local config (do not commit API keys)
+application-local.properties
+
+# Build
+target/
