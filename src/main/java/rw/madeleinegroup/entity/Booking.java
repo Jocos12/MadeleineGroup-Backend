@@ -1,6 +1,7 @@
 package rw.madeleinegroup.entity;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -54,8 +55,19 @@ public class Booking {
     @Column(precision = 15, scale = 2)
     private BigDecimal estimatedAmount;
 
-    @Column(precision = 15, scale = 2)
+    /** Total amount paid on this booking (column name matches debt-tracking schema). */
+    @Column(name = "amount_paid", precision = 10, scale = 2)
     private BigDecimal paidAmount;
+
+    /** Expected / last-noted payment method for debt follow-up (free text, e.g. MOMO). */
+    @Column(name = "payment_method", length = 50)
+    private String paymentMethod;
+
+    @Column(name = "last_reminder_sent")
+    private LocalDateTime lastReminderSent;
+
+    @Column(name = "debt_notes", columnDefinition = "TEXT")
+    private String debtNotes;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")
@@ -85,6 +97,14 @@ public class Booking {
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonBackReference
     private List<Payment> payments = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DebtPayment> debtPayments = new ArrayList<>();
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DebtReminder> debtReminders = new ArrayList<>();
 
     public Booking() {
     }
@@ -159,6 +179,12 @@ public class Booking {
     public void setEstimatedAmount(BigDecimal estimatedAmount) { this.estimatedAmount = estimatedAmount; }
     public BigDecimal getPaidAmount() { return paidAmount; }
     public void setPaidAmount(BigDecimal paidAmount) { this.paidAmount = paidAmount; }
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+    public LocalDateTime getLastReminderSent() { return lastReminderSent; }
+    public void setLastReminderSent(LocalDateTime lastReminderSent) { this.lastReminderSent = lastReminderSent; }
+    public String getDebtNotes() { return debtNotes; }
+    public void setDebtNotes(String debtNotes) { this.debtNotes = debtNotes; }
     public User getCreatedBy() { return createdBy; }
     public void setCreatedBy(User createdBy) { this.createdBy = createdBy; }
     public String getSource() { return source; }
@@ -175,4 +201,8 @@ public class Booking {
     public void setBookingPackages(List<BookingPackage> bookingPackages) { this.bookingPackages = bookingPackages != null ? bookingPackages : new ArrayList<>(); }
     public List<Payment> getPayments() { return payments; }
     public void setPayments(List<Payment> payments) { this.payments = payments != null ? payments : new ArrayList<>(); }
+    public List<DebtPayment> getDebtPayments() { return debtPayments; }
+    public void setDebtPayments(List<DebtPayment> debtPayments) { this.debtPayments = debtPayments != null ? debtPayments : new ArrayList<>(); }
+    public List<DebtReminder> getDebtReminders() { return debtReminders; }
+    public void setDebtReminders(List<DebtReminder> debtReminders) { this.debtReminders = debtReminders != null ? debtReminders : new ArrayList<>(); }
 }

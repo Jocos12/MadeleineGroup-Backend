@@ -1,7 +1,9 @@
 package rw.madeleinegroup.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import rw.madeleinegroup.dto.ClientExperienceRequest;
+import rw.madeleinegroup.dto.ClientExperienceResponse;
 import rw.madeleinegroup.entity.ClientExperience;
 import rw.madeleinegroup.entity.User;
 import rw.madeleinegroup.exception.ResourceNotFoundException;
@@ -47,15 +49,21 @@ public class ClientExperienceService {
         return exp;
     }
 
-    public List<ClientExperience> getApprovedExperiences() {
-        return experienceRepository.findByApprovalStatus(ClientExperience.ApprovalStatus.APPROVED);
+    @Transactional(readOnly = true)
+    public List<ClientExperienceResponse> getApprovedExperiences() {
+        return experienceRepository.findByApprovalStatus(ClientExperience.ApprovalStatus.APPROVED).stream()
+                .map(ClientExperienceResponse::fromEntity)
+                .toList();
     }
 
-    public List<ClientExperience> getPendingExperiences() {
-        return experienceRepository.findByApprovalStatus(ClientExperience.ApprovalStatus.PENDING);
+    @Transactional(readOnly = true)
+    public List<ClientExperienceResponse> getPendingExperiences() {
+        return experienceRepository.findByApprovalStatus(ClientExperience.ApprovalStatus.PENDING).stream()
+                .map(ClientExperienceResponse::fromEntity)
+                .toList();
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ClientExperience approveExperience(Long id, String ceoEmail) {
         ClientExperience exp = experienceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
@@ -73,12 +81,12 @@ public class ClientExperienceService {
         return exp;
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ClientExperience rejectExperience(Long id, String ceoEmail) {
         return rejectWithReason(id, ceoEmail, null);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ClientExperience rejectWithReason(Long id, String ceoEmail, String rejectionReason) {
         ClientExperience exp = experienceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
@@ -92,19 +100,22 @@ public class ClientExperienceService {
         return experienceRepository.save(exp);
     }
 
-    public List<ClientExperience> getAllExperiences() {
-        return experienceRepository.findAll();
+    @Transactional(readOnly = true)
+    public List<ClientExperienceResponse> getAllExperiences() {
+        return experienceRepository.findAll().stream()
+                .map(ClientExperienceResponse::fromEntity)
+                .toList();
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void deleteExperience(Long id) {
         ClientExperience exp = experienceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
         experienceRepository.delete(exp);
     }
 
-    @org.springframework.transaction.annotation.Transactional
-    public ClientExperience updateExperience(Long id, ClientExperienceRequest request) {
+    @Transactional
+    public ClientExperienceResponse updateExperience(Long id, ClientExperienceRequest request) {
         ClientExperience exp = experienceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Experience not found"));
         if (request.getAuthorName() != null) exp.setAuthorName(request.getAuthorName());
@@ -115,6 +126,7 @@ public class ClientExperienceService {
         if (request.getEventDate() != null) exp.setEventDate(request.getEventDate());
         if (request.getClientPhotoUrl() != null) exp.setClientPhotoUrl(request.getClientPhotoUrl());
         else if (request.getAuthorPhotoUrl() != null) exp.setClientPhotoUrl(request.getAuthorPhotoUrl());
-        return experienceRepository.save(exp);
+        exp = experienceRepository.save(exp);
+        return ClientExperienceResponse.fromEntity(exp);
     }
 }

@@ -3,10 +3,13 @@ package rw.madeleinegroup.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import rw.madeleinegroup.common.ApiResponse;
+import rw.madeleinegroup.dto.PaymentAnalyticsResponse;
+import rw.madeleinegroup.dto.PaymentTopBranchDto;
 import rw.madeleinegroup.entity.Booking;
 import rw.madeleinegroup.exception.ResourceNotFoundException;
 import rw.madeleinegroup.repository.BookingRepository;
 import rw.madeleinegroup.service.EmailService;
+import rw.madeleinegroup.service.PaymentService;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -21,10 +24,43 @@ public class PaymentController {
 
     private final BookingRepository bookingRepository;
     private final EmailService emailService;
+    private final PaymentService paymentService;
 
-    public PaymentController(BookingRepository bookingRepository, EmailService emailService) {
+    public PaymentController(BookingRepository bookingRepository, EmailService emailService,
+                             PaymentService paymentService) {
         this.bookingRepository = bookingRepository;
         this.emailService = emailService;
+        this.paymentService = paymentService;
+    }
+
+    @GetMapping("/analytics")
+    public ResponseEntity<ApiResponse<PaymentAnalyticsResponse>> getPaymentAnalytics() {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getPaymentAnalytics(), "OK"));
+    }
+
+    @GetMapping("/methods")
+    public ResponseEntity<ApiResponse<java.util.List<String>>> listPaymentMethods() {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.listPaymentMethodNames(), "OK"));
+    }
+
+    @GetMapping("/statuses")
+    public ResponseEntity<ApiResponse<java.util.List<String>>> listPaymentStatuses() {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.listPaymentStatusNames(), "OK"));
+    }
+
+    @GetMapping("/types")
+    public ResponseEntity<ApiResponse<java.util.List<String>>> listPaymentTypes() {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.listPaymentTypeNames(), "OK"));
+    }
+
+    @GetMapping("/by-branch/{branchId}")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getPaymentsByBranch(@PathVariable Long branchId) {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getPaymentsByBranch(branchId), "OK"));
+    }
+
+    @GetMapping("/top-branch")
+    public ResponseEntity<ApiResponse<PaymentTopBranchDto>> getTopBranch() {
+        return ResponseEntity.ok(ApiResponse.success(paymentService.getTopBranch(), "OK"));
     }
 
     /**

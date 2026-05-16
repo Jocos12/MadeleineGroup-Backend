@@ -32,6 +32,7 @@ public class MasterResponseBuilder {
             case "WELCOME" -> isShortGreeting(userMessage)
                 ? buildCasualGreeting(report, snap, fr)
                 : buildWelcome(report, snap, fr);
+            case "SYSTEM_BALANCE" -> buildSystemBalance(report, snap, fr);
             default -> buildFull(report, snap, fr, snapshotPrevious);
         };
         String alerts = proactiveAlertsBlock(report, snap, fr);
@@ -121,12 +122,41 @@ public class MasterResponseBuilder {
     }
 
     /** Dynamic monthly analysis: real numbers, comparison to last month, best branch, top expense (Prompt 2). */
+    private String buildSystemBalance(DeepReport r, LiveFinancialSnapshot s, boolean fr) {
+        if (fr) {
+            return String.format("""
+                **Ce que nous gardons (net, tout le système) :** **%s RWF**
+                *(Somme de tous les paiements « revenus » enregistrés, moins toutes les dépenses du module Dépenses — même définition que la carte « Ce que nous gardons (net) » du tableau de bord.)*
+
+                **Bénéfice net de la période sélectionnée (uniquement ce mois/cette fenêtre) :** **%s RWF** — ne pas le confondre avec le montant ci-dessus.
+
+                **Reste à recevoir :** **%s RWF**
+
+                Pour la liste des clients qui doivent encore payer, ouvrez **Paiements** ou **Réservations** dans l’application, ou demandez la liste des clients en attente.
+                """,
+                fmt(s.getWhatWeKeepNet()), fmt(s.getNetProfit()), fmt(s.getPendingAmount()));
+        }
+        return String.format("""
+            **What we keep (net, system-wide):** **%s RWF**
+            *(All recorded INCOME payments minus all expense-module records — same as the dashboard “What We Keep (Net)” card.)*
+
+            **Net profit for the selected period only:** **%s RWF** — do not confuse with the figure above.
+
+            **Still to receive:** **%s RWF**
+
+            For who still owes money, open **Payments** or **Bookings** in the app, or ask to list clients with pending balances.
+            """,
+            fmt(s.getWhatWeKeepNet()), fmt(s.getNetProfit()), fmt(s.getPendingAmount()));
+    }
+
     private String buildPerformance(DeepReport r, LiveFinancialSnapshot s, boolean fr, LiveFinancialSnapshot prev) {
         StringBuilder sb = new StringBuilder();
         if (fr) {
+            sb.append("**Ce que nous gardons (net, système) :** **").append(fmt(s.getWhatWeKeepNet())).append(" RWF** — position globale enregistrée ; le paragraphe suivant concerne **la période filtrée** uniquement.\n\n");
             sb.append("En regardant les chiffres de la période : ce mois vous avez gagné **").append(fmt(s.getTotalIncome())).append(" RWF** avec **").append(s.getTotalBookings()).append("** réservation(s) (dont **").append(s.getCompletedBookings()).append("** complétées). ");
             sb.append("Les dépenses s’élèvent à **").append(fmt(s.getTotalExpenses())).append(" RWF**, donc un bénéfice net de **").append(fmt(s.getNetProfit())).append(" RWF** et une marge de **").append(f1(s.getProfitMargin())).append("%**. ");
         } else {
+            sb.append("**What we keep (net, system-wide):** **").append(fmt(s.getWhatWeKeepNet())).append(" RWF** — recorded global position; the paragraph below is **only for the filtered period**.\n\n");
             sb.append("Looking at this period’s numbers: this month you earned **").append(fmt(s.getTotalIncome())).append(" RWF** from **").append(s.getTotalBookings()).append("** booking(s) (**").append(s.getCompletedBookings()).append("** completed). ");
             sb.append("Expenses are **").append(fmt(s.getTotalExpenses())).append(" RWF**, so net profit is **").append(fmt(s.getNetProfit())).append(" RWF** with a **").append(f1(s.getProfitMargin())).append("%** margin. ");
         }

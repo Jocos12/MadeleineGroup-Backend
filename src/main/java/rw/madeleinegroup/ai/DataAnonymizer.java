@@ -34,6 +34,9 @@ public class DataAnonymizer {
         out.setNetProfit(snap.getNetProfit());
         out.setProfitMargin(snap.getProfitMargin());
         out.setPendingAmount(snap.getPendingAmount());
+        out.setSystemWideIncomePaymentsTotal(snap.getSystemWideIncomePaymentsTotal());
+        out.setSystemWideExpenseModuleTotal(snap.getSystemWideExpenseModuleTotal());
+        out.setWhatWeKeepNet(snap.getWhatWeKeepNet());
         out.setTotalBookings(snap.getTotalBookings());
         out.setConfirmedBookings(snap.getConfirmedBookings());
         out.setCompletedBookings(snap.getCompletedBookings());

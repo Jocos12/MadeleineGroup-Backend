@@ -29,6 +29,8 @@ public class GroqAiService {
     private final String model;
     private final int maxTokens;
     private final double temperature;
+    /** Lower temperature for finance Q&A — more faithful to figures (default 0.42). */
+    private final double financeChatTemperature;
     private final RestTemplate restTemplate;
     private final DataAnonymizer dataAnonymizer;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -39,6 +41,7 @@ public class GroqAiService {
             @Value("${groq.model:llama3-70b-8192}") String model,
             @Value("${groq.max.tokens:1500}") int maxTokens,
             @Value("${groq.temperature:0.7}") double temperature,
+            @Value("${groq.finance.temperature:0.42}") double financeChatTemperature,
             @Qualifier("groqRestTemplate") RestTemplate restTemplate,
             DataAnonymizer dataAnonymizer) {
         this.apiKey = apiKey != null ? apiKey.trim() : "";
@@ -46,6 +49,7 @@ public class GroqAiService {
         this.model = model;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
+        this.financeChatTemperature = financeChatTemperature;
         this.restTemplate = restTemplate;
         this.dataAnonymizer = dataAnonymizer;
     }
@@ -195,7 +199,7 @@ public class GroqAiService {
         requestBody.put("model", model);
         requestBody.put("messages", messages);
         requestBody.put("max_tokens", maxTokens);
-        requestBody.put("temperature", temperature);
+        requestBody.put("temperature", financeChatTemperature);
         requestBody.put("stream", false);
 
         HttpHeaders headers = new HttpHeaders();
@@ -204,7 +208,7 @@ public class GroqAiService {
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-        log.info("[Groq] Calling API with model {}", model);
+        log.info("[Groq] Calling API with model {} (finance temperature={})", model, financeChatTemperature);
         long startMs = System.currentTimeMillis();
 
         try {
@@ -261,27 +265,45 @@ public class GroqAiService {
         sb.append("You are a professional financial advisor for an event services company. ");
         sb.append("You must always respond in the same language the user writes in (French or English).\n\n");
 
-        sb.append("--- CURRENT FINANCIAL DATA (use these exact numbers) ---\n");
+        String periodNote = s.getMonth() != null
+            ? ("year " + s.getYear() + ", calendar month " + s.getMonth())
+            : ("year " + s.getYear());
+
+        sb.append("--- CRITICAL: TWO DIFFERENT METRICS (do not confuse them) ---\n");
+        sb.append("(1) NET PROFIT / REVENUE KPIs below are for the SELECTED PERIOD ONLY (").append(periodNote).append(") — like the top row of the Finance dashboard.\n");
+        sb.append("(2) WHAT WE KEEP (NET) is the SYSTEM-WIDE position: all recorded INCOME payments minus all expense-module records — ");
+        sb.append("this matches the dashboard card \"What We Keep (Net)\" / \"Ce que nous gardons (net)\".\n");
+        sb.append("When the user asks how much money they HAVE IN THE SYSTEM, their TOTAL in the account, \"combien j'ai\", \"montant total\", ");
+        sb.append("\"solde\", \"l'argent dans mon système\", you MUST cite WHAT WE KEEP (NET), NOT the period net profit.\n\n");
+
+        sb.append("--- SELECTED PERIOD KPIs (").append(periodNote).append(") — monthly / period view ---\n");
         if (healthScore != null) {
-            sb.append("Financial health score (0-100): ").append(healthScore).append(". Mention it when the user greets or asks about overall health.\n");
+            sb.append("Financial health score (0–100, higher is better): ").append(healthScore).append(". ");
+            sb.append("If the score is very low, say the business should review costs and collections; never invent a different score.\n");
         }
-        sb.append("Total income: ").append(formatRwf(s.getTotalIncome())).append("\n");
-        sb.append("Total expenses: ").append(formatRwf(s.getTotalExpenses())).append("\n");
-        sb.append("Net profit: ").append(formatRwf(s.getNetProfit())).append("\n");
-        sb.append("Profit margin: ").append(String.format("%.1f", s.getProfitMargin())).append("%\n");
-        sb.append("Pending amount: ").append(formatRwf(s.getPendingAmount())).append("\n");
-        sb.append("Total bookings: ").append(s.getTotalBookings()).append("\n");
-        sb.append("Confirmed bookings: ").append(s.getConfirmedBookings()).append("\n");
-        sb.append("Completed bookings: ").append(s.getCompletedBookings()).append("\n");
-        sb.append("Pending bookings: ").append(s.getPendingBookings()).append("\n");
-        sb.append("Cancelled bookings: ").append(s.getCancelledBookings()).append("\n");
-        sb.append("Overdue bookings: ").append(s.getOverdueBookings()).append("\n");
-        sb.append("Total clients: ").append(s.getTotalClients()).append("\n");
-        sb.append("New clients this period: ").append(s.getNewClientsThisPeriod()).append("\n\n");
+        sb.append("Total income (this period only): ").append(formatRwf(s.getTotalIncome())).append("\n");
+        sb.append("Total expenses (this period only): ").append(formatRwf(s.getTotalExpenses())).append("\n");
+        sb.append("Net profit (this period only — NOT \"money in the system\"): ").append(formatRwf(s.getNetProfit())).append("\n");
+        sb.append("Profit margin (this period): ").append(String.format("%.1f", s.getProfitMargin())).append("%\n\n");
+
+        sb.append("--- SYSTEM-WIDE POSITION (all-time in database; use for \"how much do I have\") ---\n");
+        sb.append("Sum of all INCOME payment amounts recorded: ").append(formatRwf(s.getSystemWideIncomePaymentsTotal())).append("\n");
+        sb.append("Sum of all expense-module (Dépenses) records: ").append(formatRwf(s.getSystemWideExpenseModuleTotal())).append("\n");
+        sb.append("WHAT WE KEEP (NET) = ").append(formatRwf(s.getWhatWeKeepNet())).append("  <-- USE THIS for \"argent dans le système\" / total available position.\n\n");
+
+        sb.append("--- RECEIVABLES ---\n");
+        sb.append("Still to receive / Reste à recevoir (outstanding on bookings, same as dashboard): ").append(formatRwf(s.getPendingAmount())).append("\n\n");
+
+        sb.append("--- BOOKINGS & CLIENTS (period-scoped where noted) ---\n");
+        sb.append("Total bookings (period): ").append(s.getTotalBookings()).append("\n");
+        sb.append("Confirmed: ").append(s.getConfirmedBookings()).append(", Completed: ").append(s.getCompletedBookings());
+        sb.append(", Pending: ").append(s.getPendingBookings()).append(", Cancelled: ").append(s.getCancelledBookings()).append("\n");
+        sb.append("Overdue bookings (count only — no client names in this snapshot): ").append(s.getOverdueBookings()).append("\n");
+        sb.append("Total clients: ").append(s.getTotalClients()).append(", New this period: ").append(s.getNewClientsThisPeriod()).append("\n\n");
 
         List<MonthlyData> monthlyTrend = s.getMonthlyTrend();
         if (monthlyTrend != null && !monthlyTrend.isEmpty()) {
-            sb.append("--- MONTHLY TREND (current year) ---\n");
+            sb.append("--- MONTHLY TREND (current year, by month) ---\n");
             for (MonthlyData md : monthlyTrend) {
                 sb.append(md.getMonthName()).append(": income ").append(formatRwf(md.getIncome()))
                     .append(", expenses ").append(formatRwf(md.getExpenses()))
@@ -292,7 +314,7 @@ public class GroqAiService {
 
         List<Object[]> categories = s.getCategoryBreakdown();
         if (categories != null && !categories.isEmpty()) {
-            sb.append("--- EXPENSE BREAKDOWN BY CATEGORY ---\n");
+            sb.append("--- EXPENSE BREAKDOWN BY CATEGORY (period) ---\n");
             for (Object[] row : categories) {
                 if (row != null && row.length >= 2) {
                     sb.append(row[0]).append(": ").append(formatRwf(toDouble(row[1]))).append("\n");
@@ -303,7 +325,7 @@ public class GroqAiService {
 
         List<Object[]> branches = s.getBranchPerformance();
         if (branches != null && !branches.isEmpty()) {
-            sb.append("--- BRANCH PERFORMANCE (revenue) ---\n");
+            sb.append("--- BRANCH REVENUE (period) ---\n");
             for (Object[] row : branches) {
                 if (row != null && row.length >= 2) {
                     sb.append(row[0]).append(": ").append(formatRwf(toDouble(row[1]))).append("\n");
@@ -312,12 +334,12 @@ public class GroqAiService {
             sb.append("\n");
         }
 
-        sb.append("--- RULES ---\n");
-        sb.append("- Always use the exact numbers from the data above; never invent figures.\n");
-        sb.append("- Respond in the same language as the user (French or English).\n");
-        sb.append("- Be direct and give specific, actionable advice.\n");
-        sb.append("- When relevant, mention urgent issues such as overdue bookings or high pending amounts.\n");
-        sb.append("- Keep responses focused and clear without unnecessary repetition.\n");
+        sb.append("--- RESPONSE RULES ---\n");
+        sb.append("- Use ONLY numbers from this message; never invent amounts or client names.\n");
+        sb.append("- For \"who owes us\" / debtor names: this snapshot does not list individual debtors. Say they should open Payments or Bookings in the app for details, or use reminder features.\n");
+        sb.append("- Do not equate period net profit with total money in the system; use WHAT WE KEEP (NET) for the latter.\n");
+        sb.append("- Be concise, structured (short paragraphs or bullets), and actionable.\n");
+        sb.append("- Same language as the user (French or English).\n");
 
         return sb.toString();
     }

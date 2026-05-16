@@ -3,6 +3,7 @@ package rw.madeleinegroup.ai;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import rw.madeleinegroup.entity.BookingStatus;
+import rw.madeleinegroup.entity.PaymentType;
 import rw.madeleinegroup.repository.BookingRepository;
 import rw.madeleinegroup.repository.ClientRepository;
 import rw.madeleinegroup.repository.ExpenseRepository;
@@ -33,6 +34,17 @@ public class FinancialDataService {
         this.clientRepository = clientRepository;
     }
 
+    /**
+     * Same expense total as {@link rw.madeleinegroup.service.FinanceService#getKpis}:
+     * payment journal (EXPENSE) + expense module (approved/paid rows).
+     */
+    private BigDecimal totalExpensesForPeriod(LocalDate start, LocalDate end, LocalDateTime startDt, LocalDateTime endDt) {
+        BigDecimal paymentExpenses = paymentRepository.sumTotalByTypeAndDateRange(PaymentType.EXPENSE, startDt, endDt);
+        BigDecimal expenseAmount = expenseRepository.sumTotalByDateRange(start, end);
+        return (paymentExpenses != null ? paymentExpenses : BigDecimal.ZERO)
+            .add(expenseAmount != null ? expenseAmount : BigDecimal.ZERO);
+    }
+
     @Cacheable(value = "aiLiveSnapshot", key = "#year + '-' + (#month != null ? #month : 'all')")
     public LiveFinancialSnapshot getSnapshot(int year, Integer month) {
         LiveFinancialSnapshot snap = new LiveFinancialSnapshot();
@@ -52,15 +64,24 @@ public class FinancialDataService {
         BigDecimal income = paymentRepository.sumIncomeByPeriod(startDt, endDt);
         snap.setTotalIncome(income != null ? income.doubleValue() : 0);
 
-        BigDecimal expenses = expenseRepository.sumExpensesByPeriod(start, end);
-        snap.setTotalExpenses(expenses != null ? expenses.doubleValue() : 0);
+        BigDecimal expenses = totalExpensesForPeriod(start, end, startDt, endDt);
+        snap.setTotalExpenses(expenses.doubleValue());
 
         snap.setNetProfit(snap.getTotalIncome() - snap.getTotalExpenses());
         snap.setProfitMargin(snap.getTotalIncome() > 0
             ? (snap.getNetProfit() / snap.getTotalIncome()) * 100 : 0);
 
-        BigDecimal pending = paymentRepository.sumPendingAmount();
+        // Same as Finance overview "Still to receive" / KPI pendingAmount: min remaining per booking, then sum (global).
+        BigDecimal pending = paymentRepository.sumOutstandingReceivableMinPerBooking();
         snap.setPendingAmount(pending != null ? pending.doubleValue() : 0);
+
+        BigDecimal sysInc = paymentRepository.sumAllIncomePaymentAmounts();
+        BigDecimal sysExpMod = expenseRepository.sumAllExpenseAmounts();
+        double sysIncD = sysInc != null ? sysInc.doubleValue() : 0;
+        double sysExpD = sysExpMod != null ? sysExpMod.doubleValue() : 0;
+        snap.setSystemWideIncomePaymentsTotal(sysIncD);
+        snap.setSystemWideExpenseModuleTotal(sysExpD);
+        snap.setWhatWeKeepNet(sysIncD - sysExpD);
 
         snap.setTotalBookings(bookingRepository.countByPeriod(start, end));
         snap.setConfirmedBookings(bookingRepository.countByStatusAndPeriod(BookingStatus.CONFIRMED, start, end));
@@ -93,10 +114,12 @@ public class FinancialDataService {
             LocalDateTime ed = e.atTime(23, 59, 59);
 
             BigDecimal inc = paymentRepository.sumIncomeByPeriod(sd, ed);
-            BigDecimal exp = expenseRepository.sumExpensesByPeriod(s, e);
+            BigDecimal payExp = paymentRepository.sumTotalByTypeAndDateRange(PaymentType.EXPENSE, sd, ed);
+            BigDecimal tabExp = expenseRepository.sumExpensesByPeriod(s, e);
+            BigDecimal exp = (payExp != null ? payExp : BigDecimal.ZERO).add(tabExp != null ? tabExp : BigDecimal.ZERO);
 
             double income = inc != null ? inc.doubleValue() : 0;
-            double expenses = exp != null ? exp.doubleValue() : 0;
+            double expenses = exp.doubleValue();
 
             MonthlyData md = new MonthlyData();
             md.setMonth(m);

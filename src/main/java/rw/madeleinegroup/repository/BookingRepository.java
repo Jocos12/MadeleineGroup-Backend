@@ -150,4 +150,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     @Query(value = "SELECT DISTINCT b FROM Booking b LEFT JOIN FETCH b.client LEFT JOIN FETCH b.branch ORDER BY b.createdAt DESC",
            countQuery = "SELECT COUNT(b) FROM Booking b")
     org.springframework.data.domain.Page<Booking> findRecentBookingsWithDetails(org.springframework.data.domain.Pageable pageable);
+
+    /** Bookings with a positive remaining balance (estimated − paid), for debt tracking UI. */
+    @Query("SELECT DISTINCT b FROM Booking b LEFT JOIN FETCH b.client LEFT JOIN FETCH b.branch " +
+           "WHERE b.status IN ('PENDING', 'CONFIRMED', 'IN_PROGRESS') " +
+           "AND (COALESCE(b.estimatedAmount, 0) - COALESCE(b.paidAmount, 0)) > 0")
+    List<Booking> findOutstandingDebtBookings();
+
+    /** Fully paid bookings (paid ≥ estimated, estimated &gt; 0), with client, branch, packages for invoices. */
+    @Query("SELECT DISTINCT b FROM Booking b " +
+           "LEFT JOIN FETCH b.client " +
+           "LEFT JOIN FETCH b.branch " +
+           "LEFT JOIN FETCH b.bookingPackages bp " +
+           "LEFT JOIN FETCH bp.packageItem " +
+           "WHERE COALESCE(b.estimatedAmount, 0) > 0 " +
+           "AND COALESCE(b.paidAmount, 0) >= COALESCE(b.estimatedAmount, 0) " +
+           "AND b.client IS NOT NULL")
+    List<Booking> findFullyPaidBookingsWithDetails();
 }

@@ -3,6 +3,7 @@ package rw.madeleinegroup.dto;
 import rw.madeleinegroup.common.enums.PaymentMethod;
 import rw.madeleinegroup.common.enums.PaymentStatus;
 import rw.madeleinegroup.entity.Payment;
+import rw.madeleinegroup.entity.PaymentType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,12 +16,13 @@ public class PaymentResponse {
     private String bookingReference;
     private Long clientId;
     private String clientName;
-    private Payment.PaymentType type;
+    private PaymentType type;
     private BigDecimal amount;
     private BigDecimal remainingBalance;
     private PaymentMethod paymentMethod;
     private PaymentStatus paymentStatus;
     private String description;
+    private String updateReason;
     private Long recordedById;
     private String recordedByName;
     private LocalDateTime recordedAt;
@@ -42,6 +44,7 @@ public class PaymentResponse {
         r.setPaymentMethod(p.getPaymentMethod());
         r.setPaymentStatus(p.getPaymentStatus());
         r.setDescription(p.getDescription());
+        r.setUpdateReason(p.getUpdateReason());
         r.setRecordedById(p.getRecordedBy() != null ? p.getRecordedBy().getId() : null);
         r.setRecordedByName(p.getRecordedBy() != null ? p.getRecordedBy().getFullName() : null);
         r.setRecordedAt(p.getRecordedAt());
@@ -64,8 +67,8 @@ public class PaymentResponse {
     public void setClientId(Long clientId) { this.clientId = clientId; }
     public String getClientName() { return clientName; }
     public void setClientName(String clientName) { this.clientName = clientName; }
-    public Payment.PaymentType getType() { return type; }
-    public void setType(Payment.PaymentType type) { this.type = type; }
+    public PaymentType getType() { return type; }
+    public void setType(PaymentType type) { this.type = type; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
     public BigDecimal getRemainingBalance() { return remainingBalance; }
@@ -76,6 +79,8 @@ public class PaymentResponse {
     public void setPaymentStatus(PaymentStatus paymentStatus) { this.paymentStatus = paymentStatus; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public String getUpdateReason() { return updateReason; }
+    public void setUpdateReason(String updateReason) { this.updateReason = updateReason; }
     public Long getRecordedById() { return recordedById; }
     public void setRecordedById(Long recordedById) { this.recordedById = recordedById; }
     public String getRecordedByName() { return recordedByName; }

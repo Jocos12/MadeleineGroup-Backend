@@ -43,7 +43,7 @@ public class UserService {
     }
 
     public List<UserResponse> findByBranch(Long branchId) {
-        return userRepository.findByBranchId(branchId).stream().map(this::toResponse).collect(Collectors.toList());
+        return userRepository.findByBranch_Id(branchId).stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     public UserResponse findById(Long id) {
@@ -149,7 +149,7 @@ public class UserService {
         DeleteRequest deleteRequest = DeleteRequest.builder()
                 .userToDelete(user)
                 .requestedBy(requester)
-                .status(DeleteRequest.DeleteRequestStatus.PENDING)
+                .status(DeleteRequestStatus.PENDING)
                 .build();
         deleteRequestRepository.save(deleteRequest);
         notificationService.notifyDeleteRequested(deleteRequest);
@@ -168,7 +168,7 @@ public class UserService {
             throw new IllegalArgumentException("Only CEO can approve delete requests");
         }
 
-        dr.setStatus(approve ? DeleteRequest.DeleteRequestStatus.APPROVED : DeleteRequest.DeleteRequestStatus.REJECTED);
+        dr.setStatus(approve ? DeleteRequestStatus.APPROVED : DeleteRequestStatus.REJECTED);
         dr.setApprovedBy(ceo);
         deleteRequestRepository.save(dr);
 
@@ -184,7 +184,7 @@ public class UserService {
     public UserResponse toggleStatus(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
-        user.setEnabled(Boolean.FALSE.equals(user.getEnabled()));
+        user.setEnabled(!user.isEnabled());
         user = userRepository.save(user);
         return toResponse(user);
     }
@@ -220,8 +220,8 @@ public class UserService {
                 .branchId(u.getBranch() != null ? u.getBranch().getId() : null)
                 .branchName(u.getBranch() != null ? u.getBranch().getName() : null)
                 .profilePhotoUrl(u.getProfilePhotoUrl())
-                .enabled(u.getEnabled())
-                .emailVerified(u.getEmailVerified())
+                .enabled(u.isEnabled())
+                .emailVerified(u.isEmailVerified())
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
                 .createdByName(createdByName)

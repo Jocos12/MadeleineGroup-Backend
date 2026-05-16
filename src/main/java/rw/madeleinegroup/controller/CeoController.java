@@ -1,17 +1,22 @@
 package rw.madeleinegroup.controller;
 
 import jakarta.validation.Valid;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import rw.madeleinegroup.common.ApiResponse;
+import rw.madeleinegroup.common.enums.ExpenseStatus;
 import rw.madeleinegroup.dto.*;
 import rw.madeleinegroup.entity.*;
 import rw.madeleinegroup.repository.*;
 import rw.madeleinegroup.service.*;
 import rw.madeleinegroup.service.CustomUserDetailsService;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +71,15 @@ public class CeoController {
         this.galleryItemRepository = galleryItemRepository;
         this.notificationRepository = notificationRepository;
         this.loginAuditRepository = loginAuditRepository;
+    }
+
+    private static ExpenseStatus parseExpenseStatus(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return ExpenseStatus.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private String email(CustomUserDetailsService.UserPrincipal p) {
@@ -200,9 +214,10 @@ public class CeoController {
     // ─── DELETE REQUESTS ────────────────────────────────────────
     @GetMapping("/delete-requests")
     public ResponseEntity<?> listDeleteRequests(@RequestParam(required = false) String status) {
-        List<DeleteRequest> list = status != null
-                ? deleteRequestRepository.findByStatus(DeleteRequest.DeleteRequestStatus.valueOf(status))
-                : deleteRequestRepository.findAll();
+        List<DeleteRequest> list = status != null && !status.isBlank()
+                ? deleteRequestRepository.findByStatusOrderByRequestedAtDesc(
+                        DeleteRequestStatus.valueOf(status.trim().toUpperCase()))
+                : deleteRequestRepository.findAllByOrderByRequestedAtDesc();
         return ResponseEntity.ok(list);
     }
 
@@ -233,7 +248,8 @@ public class CeoController {
                                          @RequestParam(required = false) String sortDir,
                                          @RequestParam(defaultValue = "0") int page,
                                          @RequestParam(defaultValue = "50") int size) {
-        boolean hasSearch = query != null || type != null || paymentMethod != null || paymentStatus != null
+        boolean hasSearch = (query != null && !query.isBlank()) || (type != null && !type.isBlank())
+                || branchId != null || paymentMethod != null || paymentStatus != null
                 || dateFrom != null || dateTo != null || (sortBy != null && !sortBy.isBlank());
         if (hasSearch) {
             return ResponseEntity.ok(financeService.searchPayments(query, type, branchId, paymentMethod, paymentStatus, dateFrom, dateTo, sortBy != null ? sortBy : "recordedAt", sortDir != null ? sortDir : "desc", page, size));
@@ -266,8 +282,9 @@ public class CeoController {
     }
 
     @GetMapping("/expenses")
-    public ResponseEntity<?> listExpenses(@RequestParam(required = false) Long branchId) {
-        return ResponseEntity.ok(financeService.listAllExpenses(branchId));
+    public ResponseEntity<?> listExpenses(@RequestParam(required = false) Long branchId,
+                                         @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(financeService.listAllExpenses(branchId, parseExpenseStatus(status)));
     }
 
     @PostMapping("/expenses")
@@ -288,6 +305,26 @@ public class CeoController {
     public ResponseEntity<?> deleteExpense(@PathVariable Long id) {
         financeService.deleteExpense(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Expense deleted"));
+    }
+
+    @PostMapping("/expenses/{id}/first-approve")
+    public ResponseEntity<?> firstApproveExpense(@PathVariable Long id,
+                                                 @AuthenticationPrincipal CustomUserDetailsService.UserPrincipal p) {
+        return ResponseEntity.ok(ApiResponse.success(financeService.firstApprove(id, email(p)), "First approval recorded"));
+    }
+
+    @PostMapping("/expenses/{id}/second-approve")
+    public ResponseEntity<?> secondApproveExpense(@PathVariable Long id,
+                                                  @AuthenticationPrincipal CustomUserDetailsService.UserPrincipal p) {
+        return ResponseEntity.ok(ApiResponse.success(financeService.secondApprove(id, email(p)), "Expense finalized as paid"));
+    }
+
+    @PostMapping("/expenses/{id}/reject")
+    public ResponseEntity<?> rejectExpense(@PathVariable Long id,
+                                           @RequestBody(required = false) ExpenseRejectRequest req,
+                                           @AuthenticationPrincipal CustomUserDetailsService.UserPrincipal p) {
+        ExpenseRejectRequest body = req != null ? req : new ExpenseRejectRequest();
+        return ResponseEntity.ok(ApiResponse.success(financeService.rejectExpense(id, body, email(p)), "Expense rejected"));
     }
 
     @GetMapping("/finance/summary")
@@ -420,22 +457,34 @@ public class CeoController {
 
     // ─── BRANCHES CRUD ─────────────────────────────────────────
     @PostMapping("/branches")
-    public ResponseEntity<?> createBranch(@RequestBody Map<String, String> body) {
+    public ResponseEntity<?> createBranch(@RequestBody Map<String, Object> body) {
         Branch b = new Branch();
-        b.setCode(body.get("code"));
-        b.setName(body.get("name"));
-        b.setDescription(body.get("description"));
+        b.setCode(str(body, "code"));
+        b.setName(str(body, "name"));
+        b.setDescription(str(body, "description"));
+        b.setAddress(str(body, "address"));
+        b.setPhone(str(body, "phone"));
+        b.setEmail(str(body, "email"));
+        b.setManagerName(str(body, "managerName"));
+        if (body.containsKey("active")) {
+            b.setActive(bool(body, "active", true));
+        }
         b = branchRepository.save(b);
         return ResponseEntity.status(HttpStatus.CREATED).body(b);
     }
 
     @PutMapping("/branches/{id}")
-    public ResponseEntity<?> updateBranch(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> updateBranch(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Branch b = branchRepository.findById(id)
                 .orElseThrow(() -> new rw.madeleinegroup.exception.ResourceNotFoundException("Branch not found"));
-        if (body.containsKey("code")) b.setCode(body.get("code"));
-        if (body.containsKey("name")) b.setName(body.get("name"));
-        if (body.containsKey("description")) b.setDescription(body.get("description"));
+        if (body.containsKey("code")) b.setCode(str(body, "code"));
+        if (body.containsKey("name")) b.setName(str(body, "name"));
+        if (body.containsKey("description")) b.setDescription(str(body, "description"));
+        if (body.containsKey("address")) b.setAddress(str(body, "address"));
+        if (body.containsKey("phone")) b.setPhone(str(body, "phone"));
+        if (body.containsKey("email")) b.setEmail(str(body, "email"));
+        if (body.containsKey("managerName")) b.setManagerName(str(body, "managerName"));
+        if (body.containsKey("active")) b.setActive(bool(body, "active", b.isActive()));
         return ResponseEntity.ok(branchRepository.save(b));
     }
 
@@ -447,7 +496,34 @@ public class CeoController {
 
     // ─── RECENT LOGINS ──────────────────────────────────────────
     @GetMapping("/recent-logins")
-    public ResponseEntity<?> recentLogins() {
-        return ResponseEntity.ok(loginAuditRepository.findFirst10ByOrderByLoggedAtDesc());
+    public ResponseEntity<List<RecentLoginDto>> recentLogins(
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "15") int limit
+    ) {
+        String roleParam = (role == null || role.isBlank()) ? null : role.trim();
+        String q = (search == null || search.isBlank()) ? null : search.trim();
+        LocalDateTime fromDt = from == null ? null : from.atStartOfDay();
+        LocalDateTime toDt = to == null ? null : to.atTime(23, 59, 59, 999_999_000);
+        int lim = Math.min(Math.max(limit, 1), 15);
+        var pageable = PageRequest.of(0, lim);
+        List<LoginAudit> rows = loginAuditRepository.findRecentFiltered(roleParam, fromDt, toDt, q, pageable);
+        return ResponseEntity.ok(rows.stream().map(RecentLoginDto::from).toList());
+    }
+
+    private static String str(Map<String, Object> body, String key) {
+        Object v = body.get(key);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private static boolean bool(Map<String, Object> body, String key, boolean def) {
+        if (!body.containsKey(key) || body.get(key) == null) return def;
+        Object v = body.get(key);
+        if (v instanceof Boolean b) return b;
+        return Boolean.parseBoolean(String.valueOf(v));
     }
 }

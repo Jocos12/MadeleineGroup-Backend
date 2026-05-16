@@ -13,11 +13,21 @@ public final class BookingSpecification {
 
     private BookingSpecification() {}
 
+    /**
+     * @param overdueOnly if true, only bookings whose event date is strictly before today and status is CONFIRMED or IN_PROGRESS (same as analytics "overdue").
+     */
     public static Specification<Booking> searchBookings(String query, BookingStatus status,
                                                         Long branchId, String eventType,
-                                                        LocalDate dateFrom, LocalDate dateTo) {
+                                                        LocalDate dateFrom, LocalDate dateTo,
+                                                        Boolean overdueOnly) {
         return (root, cq, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            if (Boolean.TRUE.equals(overdueOnly)) {
+                LocalDate today = LocalDate.now();
+                predicates.add(cb.lessThan(root.get("eventDate"), today));
+                predicates.add(root.get("status").in(BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS));
+            }
 
             if (query != null && !query.isBlank()) {
                 String pattern = "%" + query.toLowerCase().trim() + "%";
@@ -28,7 +38,7 @@ public final class BookingSpecification {
                 Predicate clientPhoneMatch = cb.like(cb.lower(cb.coalesce(client.get("phone"), "")), pattern);
                 predicates.add(cb.or(refMatch, clientNameMatch, clientEmailMatch, clientPhoneMatch));
             }
-            if (status != null) {
+            if (!Boolean.TRUE.equals(overdueOnly) && status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
             if (branchId != null) {

@@ -10,6 +10,12 @@ public class LiveFinancialSnapshot {
     private double netProfit;
     private double profitMargin;
     private double pendingAmount;
+    /** Sum of all INCOME payment amounts (lifetime / all recorded). */
+    private double systemWideIncomePaymentsTotal;
+    /** Sum of all expense-module rows (lifetime). */
+    private double systemWideExpenseModuleTotal;
+    /** Income payments minus expense-module total = dashboard "What We Keep (Net)". */
+    private double whatWeKeepNet;
     private int totalBookings;
     private int confirmedBookings;
     private int completedBookings;
@@ -38,6 +44,12 @@ public class LiveFinancialSnapshot {
     public void setProfitMargin(double v) { this.profitMargin = v; }
     public double getPendingAmount() { return pendingAmount; }
     public void setPendingAmount(double v) { this.pendingAmount = v; }
+    public double getSystemWideIncomePaymentsTotal() { return systemWideIncomePaymentsTotal; }
+    public void setSystemWideIncomePaymentsTotal(double v) { this.systemWideIncomePaymentsTotal = v; }
+    public double getSystemWideExpenseModuleTotal() { return systemWideExpenseModuleTotal; }
+    public void setSystemWideExpenseModuleTotal(double v) { this.systemWideExpenseModuleTotal = v; }
+    public double getWhatWeKeepNet() { return whatWeKeepNet; }
+    public void setWhatWeKeepNet(double v) { this.whatWeKeepNet = v; }
     public int getTotalBookings() { return totalBookings; }
     public void setTotalBookings(int v) { this.totalBookings = v; }
     public int getConfirmedBookings() { return confirmedBookings; }

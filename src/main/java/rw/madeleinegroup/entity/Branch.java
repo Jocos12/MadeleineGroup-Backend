@@ -2,7 +2,9 @@ package rw.madeleinegroup.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +25,22 @@ public class Branch {
 
     private String description;
 
+    private String address;
+
+    private String phone;
+
+    private String email;
+
+    @Column(name = "manager_name")
+    private String managerName;
+
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
     @OneToMany(mappedBy = "branch", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Booking> bookings = new ArrayList<>();
 
@@ -41,6 +59,7 @@ public class Branch {
         this.code = code;
         this.name = name;
         this.description = description;
+        this.active = true;
         this.bookings = bookings != null ? bookings : new ArrayList<>();
         this.payments = payments != null ? payments : new ArrayList<>();
         this.packages = packages != null ? packages : new ArrayList<>();
@@ -80,6 +99,18 @@ public class Branch {
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getManagerName() { return managerName; }
+    public void setManagerName(String managerName) { this.managerName = managerName; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public List<Booking> getBookings() { return bookings; }
     public void setBookings(List<Booking> bookings) { this.bookings = bookings != null ? bookings : new ArrayList<>(); }
     public List<Payment> getPayments() { return payments; }

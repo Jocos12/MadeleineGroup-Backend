@@ -2,97 +2,59 @@ package rw.madeleinegroup.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import rw.madeleinegroup.security.JwtAuthFilter;
-import rw.madeleinegroup.service.CustomUserDetailsService;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import rw.madeleinegroup.security.JwtAuthenticationFilter;
+
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private final JwtAuthFilter jwtAuthFilter;
-    private final CustomUserDetailsService userDetailsService;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, CustomUserDetailsService userDetailsService) {
-        this.jwtAuthFilter = jwtAuthFilter;
-        this.userDetailsService = userDetailsService;
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
-    private static final String[] PUBLIC_URLS = {
-            "/api/auth/**",
-            "/api/contact",
-            "/api/client-experiences/public/**",
-            "/api/experiences/public/**",
-            "/api/packages/public/**",
-            "/api/gallery/public/**",
-            "/api/branches/public/**",
-            "/api/departments/**",
-            "/api/bookings/available-dates",
-            "/api/files/**",
-            "/ws/**",
-            "/actuator/health"
-    };
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration c = new CorsConfiguration();
+        c.setAllowedOrigins(List.of("http://localhost:3000", "http://127.0.0.1:3000"));
+        c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        c.setAllowedHeaders(List.of("*"));
+        c.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", c);
+        return source;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(c -> c.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> {})
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(PUBLIC_URLS).permitAll()
-                        .requestMatchers("/madeleineGroupLogo.jpeg").permitAll()
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "CEO")
-                        .requestMatchers(HttpMethod.GET, "/api/blocked-dates").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/blocked-dates").hasAnyRole("ADMIN", "CEO", "MANAGER")
-                        .requestMatchers(HttpMethod.DELETE, "/api/blocked-dates/*").hasAnyRole("ADMIN", "CEO", "MANAGER")
-                        .requestMatchers("/api/bookings/*/status").hasAnyRole("ADMIN", "CEO", "MANAGER")
-                        .requestMatchers("/api/ceo/bookings/**").hasAnyRole("CEO", "ADMIN", "MANAGER")
-                        .requestMatchers("/api/ceo/**").hasRole("CEO")
-                        .requestMatchers("/api/manager/**").hasAnyRole("MANAGER", "ADMIN", "CEO")
-                        .requestMatchers("/api/finance/**").hasAnyRole("ADMIN", "CEO", "MANAGER")
-                        .requestMatchers("/api/reminders/**").hasAnyRole("ADMIN", "CEO", "MANAGER")
-                        .requestMatchers("/api/ai/usage-stats").hasRole("CEO")
-                        .requestMatchers("/api/ai/**").hasAnyRole("ADMIN", "CEO", "MANAGER")
-                        .requestMatchers("/api/**").authenticated()
-                        .anyRequest().permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/contact-inquiries/public").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/contact").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        .requestMatchers("/uploads/**").permitAll()
+                        .anyRequest().authenticated()
                 )
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
-    }
-
-    @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder());
-        return provider;
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
     }
 }

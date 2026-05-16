@@ -80,6 +80,11 @@ public class IntentClassifier {
             return "DATA_EXPORT";
 
         // ——— GROQ intents (anonymous data only) ———
+        if (has(m, "combien j'ai", "combien d'argent", "combien comme argent", "j'ai comme argent", "argent dans le système", "argent dans mon système", "dans mon système",
+                "dans mon compte", "l'argent dans", "montant total dans", "solde global", "solde dans",
+                "how much money", "how much do i have", "money in the system", "money in my account", "total in the system",
+                "what we keep", "ce que nous gardons", "position globale", "total dans"))
+            return "SYSTEM_BALANCE";
         if (has(m, "performance", "mois", "month", "analyse", "global", "résumé", "summary", "overview"))
             return "PERFORMANCE";
         if (has(m, "dépense", "depense", "expense", "coût", "cost",

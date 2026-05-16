@@ -2,6 +2,8 @@ package rw.madeleinegroup.entity;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import rw.madeleinegroup.common.enums.PaymentMethod;
 import rw.madeleinegroup.common.enums.PaymentStatus;
 
@@ -28,8 +30,8 @@ public class Payment {
     @JoinColumn(name = "client_id")
     private Client client;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "type", length = 50, nullable = false)
     private PaymentType type;
 
     @Column(precision = 15, scale = 2, nullable = false)
@@ -38,12 +40,12 @@ public class Payment {
     @Column(name = "remaining_balance", precision = 15, scale = 2)
     private BigDecimal remainingBalance;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method")
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "payment_method", length = 50)
     private PaymentMethod paymentMethod;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "payment_status")
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "payment_status", length = 50)
     private PaymentStatus paymentStatus;
 
     private String description;
@@ -64,11 +66,6 @@ public class Payment {
 
     @Column(name = "update_reason")
     private String updateReason;
-
-    public enum PaymentType {
-        INCOME,
-        EXPENSE
-    }
 
     public Payment() {
     }
@@ -97,8 +94,8 @@ public class Payment {
         private PaymentType type;
         private BigDecimal amount;
         private BigDecimal remainingBalance;
-        private rw.madeleinegroup.common.enums.PaymentMethod paymentMethod;
-        private rw.madeleinegroup.common.enums.PaymentStatus paymentStatus;
+        private PaymentMethod paymentMethod;
+        private PaymentStatus paymentStatus;
         private String description;
         private User recordedBy;
         private LocalDateTime recordedAt;
@@ -110,8 +107,8 @@ public class Payment {
         public PaymentBuilder type(PaymentType type) { this.type = type; return this; }
         public PaymentBuilder amount(BigDecimal amount) { this.amount = amount; return this; }
         public PaymentBuilder remainingBalance(BigDecimal remainingBalance) { this.remainingBalance = remainingBalance; return this; }
-        public PaymentBuilder paymentMethod(rw.madeleinegroup.common.enums.PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; return this; }
-        public PaymentBuilder paymentStatus(rw.madeleinegroup.common.enums.PaymentStatus paymentStatus) { this.paymentStatus = paymentStatus; return this; }
+        public PaymentBuilder paymentMethod(PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; return this; }
+        public PaymentBuilder paymentStatus(PaymentStatus paymentStatus) { this.paymentStatus = paymentStatus; return this; }
         public PaymentBuilder description(String description) { this.description = description; return this; }
         public PaymentBuilder recordedBy(User recordedBy) { this.recordedBy = recordedBy; return this; }
         public PaymentBuilder recordedAt(LocalDateTime recordedAt) { this.recordedAt = recordedAt; return this; }

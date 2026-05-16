@@ -48,9 +48,10 @@ public class BookingController {
                                             @RequestParam(required = false) String eventType,
                                             @RequestParam(required = false) LocalDate dateFrom,
                                             @RequestParam(required = false) LocalDate dateTo,
+                                            @RequestParam(required = false) Boolean overdue,
                                             @RequestParam(defaultValue = "0") int page,
                                             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(bookingService.searchBookings(query, status, branchId, eventType, dateFrom, dateTo, page, size));
+        return ResponseEntity.ok(bookingService.searchBookings(query, status, branchId, eventType, dateFrom, dateTo, overdue, page, size));
     }
 
     @GetMapping("/available-dates")

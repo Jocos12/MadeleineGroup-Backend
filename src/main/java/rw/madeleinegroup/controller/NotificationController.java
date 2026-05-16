@@ -4,7 +4,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import rw.madeleinegroup.entity.Notification;
-import rw.madeleinegroup.repository.NotificationRepository;
 import rw.madeleinegroup.repository.UserRepository;
 import rw.madeleinegroup.service.CustomUserDetailsService;
 import rw.madeleinegroup.service.NotificationService;
@@ -18,23 +17,22 @@ import java.util.stream.Collectors;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
 
     public NotificationController(NotificationService notificationService,
-                                  NotificationRepository notificationRepository,
                                   UserRepository userRepository) {
         this.notificationService = notificationService;
-        this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
     }
 
     @GetMapping
     public ResponseEntity<?> list(@AuthenticationPrincipal CustomUserDetailsService.UserPrincipal principal,
-                                  @RequestParam(defaultValue = "50") int limit) {
+                                  @RequestParam(defaultValue = "80") int limit,
+                                  @RequestParam(defaultValue = "desc") String sort,
+                                  @RequestParam(defaultValue = "all") String filter) {
         if (principal == null) return ResponseEntity.status(401).build();
         var user = userRepository.findById(principal.getId()).orElse(null);
-        List<Notification> list = notificationService.getNotificationsForUser(user, limit);
+        List<Notification> list = notificationService.getNotificationsForUser(user, limit, sort, filter);
         return ResponseEntity.ok(list.stream().map(this::toDto).collect(Collectors.toList()));
     }
 
@@ -47,8 +45,11 @@ public class NotificationController {
     }
 
     @PostMapping("/{id}/read")
-    public ResponseEntity<Void> markRead(@PathVariable Long id) {
-        notificationService.markAsRead(id);
+    public ResponseEntity<Void> markRead(@PathVariable Long id,
+                                         @AuthenticationPrincipal CustomUserDetailsService.UserPrincipal principal) {
+        if (principal == null) return ResponseEntity.status(401).build();
+        var user = userRepository.findById(principal.getId()).orElse(null);
+        notificationService.markAsRead(id, user);
         return ResponseEntity.ok().build();
     }
 
@@ -58,6 +59,24 @@ public class NotificationController {
         var user = userRepository.findById(principal.getId()).orElse(null);
         if (user != null) notificationService.markAllAsReadForUser(user);
         return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteNotification(@PathVariable Long id,
+                                                   @AuthenticationPrincipal CustomUserDetailsService.UserPrincipal principal) {
+        if (principal == null) return ResponseEntity.status(401).build();
+        var user = userRepository.findById(principal.getId()).orElse(null);
+        notificationService.deleteForUser(id, user);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/read")
+    public ResponseEntity<Void> deleteReadNotifications(
+            @AuthenticationPrincipal CustomUserDetailsService.UserPrincipal principal) {
+        if (principal == null) return ResponseEntity.status(401).build();
+        var user = userRepository.findById(principal.getId()).orElse(null);
+        notificationService.deleteReadForUser(user);
+        return ResponseEntity.noContent().build();
     }
 
     private Object toDto(Notification n) {

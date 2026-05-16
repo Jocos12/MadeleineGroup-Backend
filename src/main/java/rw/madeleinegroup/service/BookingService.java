@@ -468,10 +468,11 @@ public class BookingService {
     @Transactional(readOnly = true)
     public BookingSearchResponse searchBookings(String query, String statusStr, Long branchId,
                                                  String eventType, LocalDate dateFrom, LocalDate dateTo,
+                                                 Boolean overdueOnly,
                                                  int page, int size) {
         BookingStatus status = (statusStr != null && !statusStr.isBlank())
                 ? BookingStatus.valueOf(statusStr.toUpperCase()) : null;
-        Specification<Booking> spec = BookingSpecification.searchBookings(query, status, branchId, eventType, dateFrom, dateTo);
+        Specification<Booking> spec = BookingSpecification.searchBookings(query, status, branchId, eventType, dateFrom, dateTo, overdueOnly);
         Page<Booking> pageResult = bookingRepository.findAll(spec, PageRequest.of(page, size));
         List<BookingResponse> content = pageResult.getContent().stream()
                 .map(this::toResponse)
@@ -514,7 +515,7 @@ public class BookingService {
                     .branch(booking.getBranch())
                     .booking(booking)
                     .client(booking.getClient())
-                    .type(Payment.PaymentType.INCOME)
+                    .type(PaymentType.INCOME)
                     .amount(estimated)
                     .remainingBalance(BigDecimal.ZERO)
                     .paymentMethod(method)
@@ -545,7 +546,7 @@ public class BookingService {
                     .branch(booking.getBranch())
                     .booking(booking)
                     .client(booking.getClient())
-                    .type(Payment.PaymentType.INCOME)
+                    .type(PaymentType.INCOME)
                     .amount(paid)
                     .remainingBalance(remaining)
                     .paymentMethod(method)
@@ -588,7 +589,7 @@ public class BookingService {
         BigDecimal estimated = booking.getEstimatedAmount() != null ? booking.getEstimatedAmount() : BigDecimal.ZERO;
         List<Payment> payments = paymentRepository.findByBooking_IdOrderByRecordedAtDesc(bookingId);
         BigDecimal totalPaid = payments.stream()
-                .filter(p -> p.getType() == Payment.PaymentType.INCOME)
+                .filter(p -> p.getType() == PaymentType.INCOME)
                 .map(Payment::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal remaining = estimated.subtract(totalPaid);
@@ -601,7 +602,7 @@ public class BookingService {
         dto.setRemainingBalance(remaining);
         dto.setPaymentStatus(pStatus);
         List<PaymentSummaryDto.PaymentItemDto> items = payments.stream()
-                .filter(p -> p.getType() == Payment.PaymentType.INCOME)
+                .filter(p -> p.getType() == PaymentType.INCOME)
                 .map(p -> {
                     PaymentSummaryDto.PaymentItemDto item = new PaymentSummaryDto.PaymentItemDto();
                     item.setId(p.getId());

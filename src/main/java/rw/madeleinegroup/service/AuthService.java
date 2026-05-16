@@ -51,6 +51,7 @@ public class AuthService {
         user.setPhone(request.getPhone());
         user.setRole(Role.CLIENT);
         user.setEnabled(true);
+        user.setEmailVerified(false);
         userRepository.save(user);
         otpService.generateAndSendOtp(request.getEmail());
     }

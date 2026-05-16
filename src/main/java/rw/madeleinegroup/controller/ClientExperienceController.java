@@ -6,6 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import rw.madeleinegroup.dto.ClientExperienceRequest;
+import rw.madeleinegroup.dto.ClientExperienceResponse;
 import rw.madeleinegroup.dto.RejectRequest;
 import rw.madeleinegroup.entity.ClientExperience;
 import rw.madeleinegroup.service.ClientExperienceService;
@@ -31,19 +32,19 @@ public class ClientExperienceController {
     }
 
     @GetMapping("/public")
-    public ResponseEntity<List<ClientExperience>> getApprovedExperiences() {
+    public ResponseEntity<List<ClientExperienceResponse>> getApprovedExperiences() {
         return ResponseEntity.ok(clientExperienceService.getApprovedExperiences());
     }
 
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('CEO', 'ADMIN')")
-    public ResponseEntity<List<ClientExperience>> getAllExperiences() {
+    public ResponseEntity<List<ClientExperienceResponse>> getAllExperiences() {
         return ResponseEntity.ok(clientExperienceService.getAllExperiences());
     }
 
     @GetMapping("/pending")
     @PreAuthorize("hasAnyRole('CEO', 'ADMIN')")
-    public ResponseEntity<List<ClientExperience>> getPendingForApproval() {
+    public ResponseEntity<List<ClientExperienceResponse>> getPendingForApproval() {
         return ResponseEntity.ok(clientExperienceService.getPendingExperiences());
     }
 
@@ -67,8 +68,8 @@ public class ClientExperienceController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('CEO', 'ADMIN')")
-    public ResponseEntity<ClientExperience> update(@PathVariable Long id,
-                                                   @Valid @RequestBody ClientExperienceRequest request) {
+    public ResponseEntity<ClientExperienceResponse> update(@PathVariable Long id,
+                                                           @Valid @RequestBody ClientExperienceRequest request) {
         return ResponseEntity.ok(clientExperienceService.updateExperience(id, request));
     }
 }

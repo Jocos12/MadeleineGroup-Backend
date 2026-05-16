@@ -1,11 +1,19 @@
 package rw.madeleinegroup.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import rw.madeleinegroup.entity.Booking;
 import rw.madeleinegroup.entity.ClientExperience;
+import rw.madeleinegroup.entity.Expense;
 import rw.madeleinegroup.entity.Notification;
+import rw.madeleinegroup.entity.Payment;
+import rw.madeleinegroup.entity.PaymentType;
+import rw.madeleinegroup.entity.Role;
 import rw.madeleinegroup.entity.User;
+import rw.madeleinegroup.repository.BookingRepository;
 import rw.madeleinegroup.repository.NotificationRepository;
 import rw.madeleinegroup.repository.UserRepository;
 
@@ -13,33 +21,57 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.EnumSet;
 
 @Service
 public class NotificationService {
 
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final BookingRepository bookingRepository;
     private final EmailService emailService;
     private final SimpMessagingTemplate messagingTemplate;
 
     public NotificationService(NotificationRepository notificationRepository, UserRepository userRepository,
+                              BookingRepository bookingRepository,
                               EmailService emailService, SimpMessagingTemplate messagingTemplate) {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
+        this.bookingRepository = bookingRepository;
         this.emailService = emailService;
         this.messagingTemplate = messagingTemplate;
     }
 
     public void createAndBroadcast(String title, String message, Notification.NotificationType type) {
-        Notification n = Notification.builder()
-                .title(title)
-                .message(message)
-                .type(type)
-                .read(false)
-                .build();
-        n = notificationRepository.save(n);
-        broadcastNotification(n);
-        sendEmailToCEO(title, message);
+        createAndBroadcast(title, message, type, true);
+    }
+
+    /**
+     * Creates in-app notifications for CEO/ADMIN/MANAGER. Optionally sends the legacy plain-text email to CEOs.
+     */
+    public void createAndBroadcast(String title, String message, Notification.NotificationType type, boolean sendCeoPlainEmail) {
+        createForRolesAndBroadcast(title, message, type, EnumSet.of(Role.CEO, Role.ADMIN, Role.MANAGER));
+        if (sendCeoPlainEmail) {
+            sendEmailToCEO(title, message);
+        }
+    }
+
+    private void createForRolesAndBroadcast(String title, String message, Notification.NotificationType type, EnumSet<Role> roles) {
+        for (Role role : roles) {
+            userRepository.findByRole(role).forEach(user -> {
+                Notification n = Notification.builder()
+                        .user(user)
+                        .title(title)
+                        .message(message)
+                        .type(type)
+                        .read(false)
+                        .build();
+                n = notificationRepository.save(n);
+                broadcastNotification(n);
+            });
+        }
     }
 
     public void notifyNewBooking(Booking booking) {
@@ -98,8 +130,23 @@ public class NotificationService {
     }
 
     public void notifyDeleteRequest(User targetUser, User requestedBy) {
-        String msg = "Delete request for user " + targetUser.getEmail() + " by " + requestedBy.getEmail();
-        createAndBroadcast("Delete Request", msg, Notification.NotificationType.USER_DELETE_REQUEST);
+        String msg = "[Account delete request] User " + targetUser.getEmail() + " — requested by " + requestedBy.getEmail() + ".";
+        createAndBroadcast("Delete Request", msg, Notification.NotificationType.SYSTEM_ALERT);
+    }
+
+    /** Large expense recorded by a manager — needs CEO / admin / another approver. */
+    public void notifyExpensePendingApproval(Expense expense) {
+        String amount = expense.getAmount() != null ? expense.getAmount().toPlainString() : "?";
+        String desc = expense.getDescription() != null ? expense.getDescription() : "—";
+        String branch = expense.getBranch() != null && expense.getBranch().getName() != null
+                ? expense.getBranch().getName() : "—";
+        String statusLabel = expense.getEffectiveStatus() != null ? expense.getEffectiveStatus().name() : "PENDING";
+        String msg = String.format(
+                "[Expense] #%d of %s RWF (%s) — branch %s — status %s — pending approval (auto-approve limit %s RWF).",
+                expense.getId(), amount, desc, branch, statusLabel, Expense.CEO_AUTO_APPROVE_MAX_RWF.toPlainString());
+        createAndBroadcast("Expense approval required", msg, Notification.NotificationType.SYSTEM_ALERT, false);
+        userRepository.findByRole(Role.CEO).forEach(ceo ->
+                emailService.sendExpenseApprovalRequiredEmail(ceo.getEmail(), expense, amount, desc, branch, statusLabel));
     }
 
     private void broadcastNotification(Notification n) {
@@ -126,29 +173,62 @@ public class NotificationService {
     }
 
     public List<Notification> getNotificationsForUser(User user, int limit) {
-        var pageable = org.springframework.data.domain.PageRequest.of(0, limit);
+        return getNotificationsForUser(user, limit, "desc", "all");
+    }
+
+    /**
+     * @param sort "asc" or "desc" (createdAt)
+     * @param filter "all", "unread", or "read"
+     */
+    public List<Notification> getNotificationsForUser(User user, int limit, String sort, String filter) {
         if (user == null) {
-            return notificationRepository.findFirst50ByOrderByCreatedAtDesc();
+            return List.of();
         }
-        return notificationRepository.findForUserOrderByCreatedAtDesc(user, pageable);
+        int cap = Math.min(Math.max(limit, 5), 300);
+        org.springframework.data.domain.Sort.Direction dir =
+                "asc".equalsIgnoreCase(sort)
+                        ? org.springframework.data.domain.Sort.Direction.ASC
+                        : org.springframework.data.domain.Sort.Direction.DESC;
+        var pageable = org.springframework.data.domain.PageRequest.of(0, cap,
+                org.springframework.data.domain.Sort.by(dir, "createdAt"));
+        List<Notification> list = notificationRepository.findByUser(user, pageable);
+        if ("unread".equalsIgnoreCase(filter)) {
+            return list.stream().filter(n -> Boolean.FALSE.equals(n.getRead())).toList();
+        }
+        if ("read".equalsIgnoreCase(filter)) {
+            return list.stream().filter(n -> Boolean.TRUE.equals(n.getRead())).toList();
+        }
+        return list;
     }
 
     public long getUnreadCountForUser(User user) {
-        if (user == null) {
-            return notificationRepository.countByReadFalse();
-        }
-        return notificationRepository.countUnreadForUser(user);
+        if (user == null) return 0;
+        return notificationRepository.countByUserAndReadFalse(user);
     }
 
+    @Transactional
     public void markAllAsReadForUser(User user) {
         notificationRepository.markAllAsReadByUser(user);
     }
 
-    public void markAsRead(Long id) {
-        notificationRepository.findById(id).ifPresent(n -> {
+    public void markAsRead(Long id, User user) {
+        if (user == null) return;
+        notificationRepository.findByIdAndUser(id, user).ifPresent(n -> {
             n.setRead(true);
             notificationRepository.save(n);
         });
+    }
+
+    @Transactional
+    public void deleteForUser(Long id, User user) {
+        if (user == null) return;
+        notificationRepository.deleteByIdAndUser(id, user);
+    }
+
+    @Transactional
+    public void deleteReadForUser(User user) {
+        if (user == null) return;
+        notificationRepository.deleteByUserAndReadTrue(user);
     }
 
     public void notifyUserCreated(User user, User creator) {
@@ -160,19 +240,86 @@ public class NotificationService {
     }
 
     public void notifyUserDeleted(User user, User deleter) {
-        createAndBroadcast("User Deleted", "User " + user.getEmail() + " was deleted by " + deleter.getEmail(), Notification.NotificationType.USER_DELETE_APPROVED);
+        String msg = "[User deleted] " + user.getEmail() + " — deleted by " + deleter.getEmail() + ".";
+        createAndBroadcast("User Deleted", msg, Notification.NotificationType.SYSTEM_ALERT);
     }
 
     public void notifyDeleteRequested(rw.madeleinegroup.entity.DeleteRequest deleteRequest) {
-        createAndBroadcast("Delete Requested", "Delete request for user " + deleteRequest.getUserToDelete().getEmail(), Notification.NotificationType.USER_DELETE_REQUEST);
+        String email = deleteRequest.getUserToDelete() != null ? deleteRequest.getUserToDelete().getEmail() : "—";
+        String msg = "[Account delete requested] User " + email + " — awaiting review.";
+        createAndBroadcast("Delete Requested", msg, Notification.NotificationType.SYSTEM_ALERT);
     }
 
     public void notifyDeleteRejected(rw.madeleinegroup.entity.DeleteRequest dr) {
         createAndBroadcast("Delete Rejected", "Delete request for " + dr.getUserToDelete().getEmail() + " was rejected", Notification.NotificationType.SYSTEM_ALERT);
     }
 
-    public void notifyPaymentRecorded(rw.madeleinegroup.entity.Payment payment, User recordedBy) {
-        createAndBroadcast("Payment Recorded", "Payment of " + payment.getAmount() + " recorded by " + recordedBy.getEmail(), Notification.NotificationType.PAYMENT_RECORDED);
+    public void notifyPaymentRecorded(Payment payment, User recordedBy) {
+        Booking b = null;
+        if (payment.getBooking() != null && payment.getBooking().getId() != null) {
+            b = bookingRepository.findByIdWithDetails(payment.getBooking().getId()).orElse(null);
+        }
+        String ref = b != null && b.getBookingReference() != null ? b.getBookingReference() : "—";
+        StringBuilder detail = new StringBuilder();
+        detail.append("Income ").append(payment.getAmount().toPlainString()).append(" RWF — booking ").append(ref);
+        detail.append(" — by ").append(recordedBy.getEmail());
+        if (payment.getRemainingBalance() != null) {
+            detail.append(". Remaining: ").append(payment.getRemainingBalance().toPlainString()).append(" RWF");
+        }
+        createAndBroadcast("Payment received", detail.toString(), Notification.NotificationType.PAYMENT_RECORDED);
+
+        if (payment.getType() == PaymentType.INCOME && b != null && b.getClient() != null) {
+            String email = b.getClient().getEmail();
+            if (email != null && !email.isBlank()) {
+                try {
+                    java.time.LocalDate pdate = payment.getRecordedAt() != null
+                            ? payment.getRecordedAt().toLocalDate() : java.time.LocalDate.now();
+                    BigDecimal remaining = payment.getRemainingBalance() != null
+                            ? payment.getRemainingBalance() : BigDecimal.ZERO;
+                    boolean fullyPaid = remaining.compareTo(BigDecimal.ZERO) <= 0;
+                    String pm = payment.getPaymentMethod() != null ? payment.getPaymentMethod().name().replace('_', ' ') : "";
+                    emailService.sendPaymentReceivedAcknowledgmentSync(email.trim(),
+                            b.getClient().getFullName(), ref, payment.getAmount(), pm, pdate, remaining, fullyPaid);
+                } catch (Exception e) {
+                    log.warn("Could not send payment acknowledgement email to client: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    /** After a debt installment on the Debts dashboard — in-app + CEO email + client acknowledgement. */
+    public void notifyDebtPaymentRecorded(rw.madeleinegroup.entity.DebtPayment dp, Booking booking, User recordedBy) {
+        String ref = booking.getBookingReference() != null ? booking.getBookingReference() : "—";
+        String clientName = booking.getClient() != null && booking.getClient().getFullName() != null
+                ? booking.getClient().getFullName() : "Client";
+        BigDecimal est = booking.getEstimatedAmount() != null ? booking.getEstimatedAmount() : BigDecimal.ZERO;
+        BigDecimal paid = booking.getPaidAmount() != null ? booking.getPaidAmount() : BigDecimal.ZERO;
+        BigDecimal remaining = est.subtract(paid).max(BigDecimal.ZERO);
+        boolean fullyPaid = est.compareTo(BigDecimal.ZERO) > 0 && paid.compareTo(est) >= 0;
+
+        String msg = String.format("Debt payment %s RWF — %s (%s) — by %s. Remaining: %s RWF.",
+                dp.getAmount().toPlainString(), ref, clientName, recordedBy.getEmail(), remaining.toPlainString());
+        createAndBroadcast("Debt payment received", msg, Notification.NotificationType.PAYMENT_RECORDED);
+
+        if (booking.getClient() != null) {
+            String email = booking.getClient().getEmail();
+            if (email != null && !email.isBlank()) {
+                try {
+                    String pm = dp.getPaymentMethod() != null ? dp.getPaymentMethod() : "";
+                    emailService.sendPaymentReceivedAcknowledgmentSync(email.trim(), clientName, ref, dp.getAmount(),
+                            pm, dp.getPaymentDate(), remaining, fullyPaid);
+                } catch (Exception e) {
+                    log.warn("Could not send debt payment acknowledgement email: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    /** Summary after sending invoice emails from the Invoices page. */
+    public void notifyInvoiceBatchSent(int sent, int requested, String senderLabel) {
+        createAndBroadcast("Invoices sent",
+                String.format("%d of %d invoice email(s) delivered. Sent by %s.", sent, requested, senderLabel),
+                Notification.NotificationType.SYSTEM_ALERT);
     }
 
     /** Called when booking is confirmed via the payment flow. Sends custom full/partial payment emails. */

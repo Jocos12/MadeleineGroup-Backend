@@ -36,16 +36,16 @@ public class Notification {
     @CreationTimestamp
     private LocalDateTime createdAt;
 
+    /**
+     * Must match MySQL {@code notifications.type} ENUM exactly (no DB migration from app code).
+     */
     public enum NotificationType {
         BOOKING_CREATED,
         BOOKING_CONFIRMED,
-        PAYMENT_RECORDED,
-        USER_DELETE_REQUEST,
-        USER_DELETE_APPROVED,
+        SYSTEM_ALERT,
         CLIENT_EXPERIENCE_SUBMITTED,
         CLIENT_EXPERIENCE_APPROVED,
-        CONTACT_INQUIRY,
-        SYSTEM_ALERT
+        PAYMENT_RECORDED
     }
 
     public Notification() {

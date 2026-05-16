@@ -1,5 +1,6 @@
 package rw.madeleinegroup.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -15,6 +16,7 @@ public class LoginAudit {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnore
     private User user;
 
     private String email;
@@ -23,6 +25,12 @@ public class LoginAudit {
 
     @CreationTimestamp
     private LocalDateTime loggedAt;
+
+    @Column(name = "ip_address")
+    private String ipAddress;
+
+    @Column(name = "user_agent")
+    private String userAgent;
 
     public LoginAudit() {}
 
@@ -38,4 +46,8 @@ public class LoginAudit {
     public void setRole(String role) { this.role = role; }
     public LocalDateTime getLoggedAt() { return loggedAt; }
     public void setLoggedAt(LocalDateTime loggedAt) { this.loggedAt = loggedAt; }
+    public String getIpAddress() { return ipAddress; }
+    public void setIpAddress(String ipAddress) { this.ipAddress = ipAddress; }
+    public String getUserAgent() { return userAgent; }
+    public void setUserAgent(String userAgent) { this.userAgent = userAgent; }
 }

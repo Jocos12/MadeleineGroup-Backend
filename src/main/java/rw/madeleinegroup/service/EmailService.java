@@ -11,6 +11,12 @@ import org.springframework.stereotype.Service;
 
 import jakarta.mail.internet.MimeMessage;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+import rw.madeleinegroup.entity.Expense;
+
 @Service
 public class EmailService {
 
@@ -23,6 +29,10 @@ public class EmailService {
     private String contactPhone;
     @Value("${app.contact.email:}")
     private String contactEmail;
+    @Value("${app.api-base-url:http://localhost:8082}")
+    private String apiBaseUrl;
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
 
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
@@ -33,8 +43,8 @@ public class EmailService {
         if (to == null || to.isBlank()) return;
         try {
             String body = "<p style=\"margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;\">Your one-time password is:</p>"
-                + "<div style=\"background:#e8f4f4;border-left:4px solid #0d6e6e;padding:20px;border-radius:4px;margin-bottom:20px;\">"
-                + "<p style=\"margin:0;font-size:28px;font-weight:700;letter-spacing:0.2em;color:#0d6e6e;\">" + escapeHtml(otp) + "</p></div>"
+                + "<div style=\"background:#ecfdf5;border-left:4px solid #2d9e5f;padding:20px;border-radius:12px;margin-bottom:20px;\">"
+                + "<p style=\"margin:0;font-size:28px;font-weight:700;letter-spacing:0.2em;color:#1a5c38;\">" + escapeHtml(otp) + "</p></div>"
                 + "<p style=\"margin:0 0 8px;font-size:14px;color:#64748b;\">This OTP expires in 10 minutes.</p>"
                 + "<p style=\"margin:0;font-size:14px;color:#64748b;\">Do not share this code with anyone.</p>";
             String html = buildBrandedEmailWrapper("CODE DE CONNEXION / LOGIN OTP", body);
@@ -43,6 +53,190 @@ public class EmailService {
         } catch (Exception e) {
             log.error("Failed to send OTP email to {}: {}", to, e.getMessage());
         }
+    }
+
+    /**
+     * Branded HTML alert when an expense exceeds the auto-approve threshold (same visual language as OTP emails).
+     */
+    @Async
+    public void sendExpenseApprovalRequiredEmail(String to, Expense expense, String amountPlain,
+                                                 String description, String branchName, String statusLabel) {
+        if (to == null || to.isBlank() || expense == null) {
+            return;
+        }
+        try {
+            String idStr = String.valueOf(expense.getId());
+            String amt = escapeHtml(amountPlain != null ? amountPlain : "?");
+            String desc = escapeHtml(description != null ? description : "—");
+            String branch = escapeHtml(branchName != null ? branchName : "—");
+            String status = escapeHtml(statusLabel != null ? statusLabel : "—");
+            String limit = escapeHtml(Expense.CEO_AUTO_APPROVE_MAX_RWF.toPlainString());
+
+            String dash = (frontendUrl != null && !frontendUrl.isBlank()) ? frontendUrl.trim().replaceAll("/+$", "") : "http://localhost:3000";
+            String ctaHref = dash + "/dashboard";
+
+            String body = "<p style=\"margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;\">"
+                    + "Une dépense dépasse la limite d'auto-approbation et nécessite votre validation.<br/>"
+                    + "<span style=\"color:#64748b;\">An expense exceeds the auto-approve limit and requires your approval.</span>"
+                    + "</p>"
+                    + "<div style=\"background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:22px 20px;margin:0 0 22px;text-align:center;\">"
+                    + "<p style=\"margin:0 0 6px;font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;\">Montant / Amount (RWF)</p>"
+                    + "<p style=\"margin:0;font-size:30px;font-weight:800;letter-spacing:0.04em;color:#dc2626;\">" + amt + " <span style=\"font-size:18px;color:#64748b;font-weight:600;\">RWF</span></p>"
+                    + "</div>"
+                    + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"font-size:14px;color:#334155;margin-bottom:20px;\">"
+                    + "<tr><td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;color:#64748b;width:40%;\">ID</td><td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:600;\">#" + escapeHtml(idStr) + "</td></tr>"
+                    + "<tr><td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;color:#64748b;\">Branche / Branch</td><td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:600;\">" + branch + "</td></tr>"
+                    + "<tr><td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;color:#64748b;\">Statut / Status</td><td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;\"><span style=\"display:inline-block;background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;\">" + status + "</span></td></tr>"
+                    + "<tr><td style=\"padding:10px 0;color:#64748b;vertical-align:top;\">Description</td><td style=\"padding:10px 0;font-weight:500;\">" + desc + "</td></tr>"
+                    + "<tr><td style=\"padding:10px 0 0;color:#64748b;\">Auto-approve limit</td><td style=\"padding:10px 0 0;font-weight:600;color:#1a5c38;\">" + limit + " RWF</td></tr>"
+                    + "</table>"
+                    + "<p style=\"margin:0 0 20px;font-size:13px;line-height:1.6;color:#64748b;\">"
+                    + "Connectez-vous au tableau de bord pour approuver ou rejeter cette dépense.<br/>"
+                    + "Sign in to the dashboard to approve or reject this expense."
+                    + "</p>"
+                    + "<p style=\"text-align:center;margin:0;\"><a href=\"" + escapeHtml(ctaHref) + "\" style=\"display:inline-block;background:#f0b429;color:#1a2937 !important;text-decoration:none;border-radius:8px;padding:14px 28px;font-size:15px;font-weight:700;\">"
+                    + "Ouvrir le tableau de bord / Open dashboard →"
+                    + "</a></p>";
+
+            String html = buildBrandedEmailWrapper("APPROBATION DE DÉPENSE / EXPENSE APPROVAL", body);
+            sendHtmlEmail(to.trim(), "Madeleine Group — Expense approval required / Approbation de dépense", html);
+            log.info("Expense approval HTML email sent to {}", to);
+        } catch (Exception e) {
+            log.error("Failed to send expense approval email to {}: {}", to, e.getMessage());
+        }
+    }
+
+    /**
+     * Sends a branded HTML announcement (round logo + teal header) to each recipient.
+     */
+    /**
+     * Sends branded HTML announcement emails. When {@code imageUrls} is non-empty, each public URL is embedded
+     * as an inline {@code <img>} (first image prominent, rest as thumbnails). Relative paths are resolved with
+     * {@code app.api-base-url}. For reliable display in Gmail/Outlook, production should use https URLs only.
+     */
+    @Async
+    public void sendAnnouncementBrandedEmails(List<String> recipientEmails, String title,
+                                                String bodyPlain, String authorLabel,
+                                                List<String> imageUrls, String audienceLabel) {
+        if (recipientEmails == null || recipientEmails.isEmpty()) {
+            return;
+        }
+        String author = authorLabel != null && !authorLabel.isBlank() ? authorLabel.trim() : "Madeleine Group";
+        String safeTitle = title != null && !title.isBlank() ? title.trim() : "Announcement";
+        String subject = "Madeleine Group — " + (safeTitle.length() > 90 ? safeTitle.substring(0, 87) + "…" : safeTitle);
+        for (String to : recipientEmails.stream().distinct().toList()) {
+            if (to == null || to.isBlank()) {
+                continue;
+            }
+            try {
+                String inner = buildAnnouncementEmailInner(safeTitle, bodyPlain, author, imageUrls, audienceLabel);
+                String html = buildBrandedEmailWrapper("NOUVELLE ANNONCE / NEW ANNOUNCEMENT", inner);
+                sendHtmlEmail(to.trim(), subject, html);
+            } catch (Exception e) {
+                log.error("Announcement email failed for {}: {}", to, e.getMessage());
+            }
+        }
+    }
+
+    private String buildAnnouncementEmailInner(String title, String bodyPlain, String author,
+                                               List<String> imageUrls, String audienceLabel) {
+        String bodyHtml = plainToHtml(bodyPlain != null ? bodyPlain : "");
+        StringBuilder inner = new StringBuilder();
+        inner.append("<p style=\"margin:0 0 12px;font-size:14px;color:#64748b;\">")
+                .append("From <strong style=\"color:#0d6e6e;\">").append(escapeHtml(author)).append("</strong></p>");
+        if (audienceLabel != null && !audienceLabel.isBlank()) {
+            inner.append("<p style=\"margin:0 0 14px;\"><span style=\"display:inline-block;background:#e8f4f4;color:#0d6e6e;padding:6px 14px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;\">")
+                    .append(escapeHtml(audienceLabel.trim()))
+                    .append("</span></p>");
+        }
+        inner.append("<h2 style=\"margin:0 0 18px;font-size:20px;color:#1e293b;line-height:1.35;\">")
+                .append(escapeHtml(title))
+                .append("</h2>")
+                .append(bodyHtml)
+                .append(buildAnnouncementImagesSection(imageUrls));
+
+        String dash = (frontendUrl != null && !frontendUrl.isBlank()) ? frontendUrl.trim().replaceAll("/+$", "") : "http://localhost:3000";
+        String ctaHref = dash + "/dashboard";
+        inner.append("<p style=\"text-align:center;margin:28px 0 0;\"><a href=\"")
+                .append(escapeHtml(ctaHref))
+                .append("\" style=\"display:inline-block;background:#0d6e6e;color:#ffffff !important;text-decoration:none;border-radius:25px;padding:14px 32px;font-size:15px;font-weight:600;\">")
+                .append("View in dashboard → / Voir le tableau de bord →")
+                .append("</a></p>");
+        inner.append("<p style=\"text-align:center;margin:12px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;\">")
+                .append("Open the Madeleine Group dashboard for the full announcement.")
+                .append("</p>");
+        return inner.toString();
+    }
+
+    /**
+     * Builds a table-based image block (better Outlook support than flex/grid). Skips unsafe or unresolvable URLs.
+     */
+    private String buildAnnouncementImagesSection(List<String> imageUrls) {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return "";
+        }
+        List<String> absolute = new ArrayList<>();
+        for (String raw : imageUrls) {
+            String n = normalizeAnnouncementImageUrl(raw);
+            if (n != null) {
+                absolute.add(n);
+            }
+        }
+        if (absolute.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style=\"margin:28px 0 0;\">");
+        sb.append("<p style=\"margin:0 0 12px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;\">")
+                .append("Images / Images")
+                .append("</p>");
+
+        String mainSrc = escapeHtml(absolute.get(0));
+        sb.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0 0 14px;\"><tr><td align=\"center\">");
+        sb.append("<img src=\"").append(mainSrc).append("\" alt=\"Announcement\" width=\"520\" ")
+                .append("style=\"display:block;width:100%;max-width:520px;max-height:300px;height:auto;object-fit:cover;border-radius:12px;border:0;outline:none;text-decoration:none;\" />");
+        sb.append("</td></tr></table>");
+
+        if (absolute.size() > 1) {
+            sb.append("<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:0;\"><tr>");
+            for (int i = 1; i < absolute.size(); i++) {
+                String src = escapeHtml(absolute.get(i));
+                sb.append("<td style=\"padding:4px 6px 4px 0;vertical-align:top;\">");
+                sb.append("<img src=\"").append(src).append("\" alt=\"\" width=\"120\" height=\"90\" ")
+                        .append("style=\"display:block;width:120px;height:90px;object-fit:cover;border-radius:8px;border:2px solid #e2e8f0;\" />");
+                sb.append("</td>");
+            }
+            sb.append("</tr></table>");
+        }
+        sb.append("</div>");
+        return sb.toString();
+    }
+
+    /** Returns an absolute http(s) URL safe for {@code img src}, or null if the value must be skipped. */
+    private String normalizeAnnouncementImageUrl(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String u = raw.trim();
+        if (u.isEmpty()) {
+            return null;
+        }
+        String lower = u.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
+            return null;
+        }
+        if (lower.startsWith("https://") || lower.startsWith("http://")) {
+            return u;
+        }
+        if (u.startsWith("//")) {
+            return "https:" + u;
+        }
+        String base = (apiBaseUrl != null && !apiBaseUrl.isBlank()) ? apiBaseUrl.trim().replaceAll("/+$", "") : "http://localhost:8082";
+        if (u.startsWith("/")) {
+            return base + u;
+        }
+        return base + "/" + u;
     }
 
     @Async
@@ -56,6 +250,40 @@ public class EmailService {
         } catch (Exception e) {
             log.error("Failed to send notification email: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Sends the debt reminder email from the Debts dashboard (branded HTML). Synchronous — throws on SMTP failure.
+     * {@code lang} should be en, fr, or rw (case-insensitive).
+     */
+    public void sendDebtReminderFromDashboardSync(String toEmail, String lang, String messageBody) {
+        if (toEmail == null || toEmail.isBlank()) {
+            throw new IllegalArgumentException("Client has no email address");
+        }
+        String body = messageBody != null ? messageBody.trim() : "";
+        if (body.isEmpty()) {
+            throw new IllegalArgumentException("Message body is required");
+        }
+        String l = lang != null ? lang.trim().toLowerCase(java.util.Locale.ROOT) : "en";
+        String headerTitle;
+        String subject;
+        switch (l) {
+            case "fr" -> {
+                headerTitle = "RAPPEL DE PAIEMENT";
+                subject = "Madeleine Group — Rappel de paiement";
+            }
+            case "rw" -> {
+                headerTitle = "KWIBUKA KWISHYURA";
+                subject = "Madeleine Group — Kwibuka kwishyura";
+            }
+            default -> {
+                headerTitle = "PAYMENT REMINDER";
+                subject = "Madeleine Group — Payment reminder";
+            }
+        }
+        String inner = plainToHtml(body);
+        String html = buildBrandedEmailWrapper(headerTitle, inner);
+        sendHtmlEmailSync(toEmail.trim(), subject, html);
     }
 
     /** Sends reminder email synchronously as plain text; throws on failure so caller can count success/failure. */
@@ -132,19 +360,24 @@ public class EmailService {
         return html.toString();
     }
 
-    /** Shared wrapper for all branded emails: logo (round), teal header, body, footer. */
+    /** Shared wrapper for all branded emails: logo (round), header, body, footer. */
     private String buildBrandedEmailWrapper(String headerTitle, String bodyContent) {
+        return buildBrandedEmailWrapper(headerTitle, bodyContent, "#1a5c38");
+    }
+
+    private String buildBrandedEmailWrapper(String headerTitle, String bodyContent, String headerBgHex) {
         String logoTag = buildLogoImgTag();
         String phone = (contactPhone != null && !contactPhone.isBlank()) ? contactPhone.trim() : "";
         String email = (contactEmail != null && !contactEmail.isBlank()) ? contactEmail.trim() : "";
+        String headerBg = (headerBgHex != null && !headerBgHex.isBlank()) ? headerBgHex : "#1a5c38";
         StringBuilder html = new StringBuilder();
         html.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Madeleine Group</title></head>");
-        html.append("<body style=\"margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#f4f7f6;\">");
-        html.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f4f7f6;padding:24px 16px;\"><tr><td align=\"center\">");
-        html.append("<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);overflow:hidden;\">");
-        html.append("<tr><td style=\"background:#0d6e6e;padding:30px;text-align:center;\">");
+        html.append("<body style=\"margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#f9fafb;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f9fafb;padding:24px 16px;\"><tr><td align=\"center\">");
+        html.append("<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);overflow:hidden;\">");
+        html.append("<tr><td style=\"background:").append(escapeHtml(headerBg)).append(";padding:30px;text-align:center;\">");
         html.append("<div style=\"margin-bottom:12px;\">").append(logoTag).append("</div>");
-        html.append("<p style=\"margin:0;font-size:16px;font-weight:700;color:#fff;letter-spacing:0.08em;\">").append(escapeHtml(headerTitle)).append("</p>");
+        html.append("<p style=\"margin:0;font-size:16px;font-weight:700;color:#fff;letter-spacing:0.06em;\">").append(escapeHtml(headerTitle)).append("</p>");
         html.append("</td></tr>");
         html.append("<tr><td style=\"padding:40px;color:#1e293b;\">").append(bodyContent).append("</td></tr>");
         html.append("<tr><td style=\"background:#f8f9fa;padding:20px;text-align:center;\">");
@@ -153,7 +386,7 @@ public class EmailService {
             html.append("<p style=\"margin:8px 0 0;font-size:12px;color:#94a3b8;\">");
             if (!phone.isEmpty()) html.append(escapeHtml(phone));
             if (!phone.isEmpty() && !email.isEmpty()) html.append(" · ");
-            if (!email.isEmpty()) html.append("<a href=\"mailto:").append(escapeHtml(email)).append("\" style=\"color:#0d6e6e;\">").append(escapeHtml(email)).append("</a>");
+            if (!email.isEmpty()) html.append("<a href=\"mailto:").append(escapeHtml(email)).append("\" style=\"color:#2d9e5f;\">").append(escapeHtml(email)).append("</a>");
             html.append("</p>");
         }
         html.append("</td></tr></table></td></tr></table></body></html>");
@@ -534,6 +767,110 @@ public class EmailService {
         return en;
     }
 
+    @Async
+    public void sendContactInquiryReplyEmail(String toEmail, String originalSubject, String recipientName,
+                                             String originalMessage, String replyBody, String repliedByName) {
+        if (toEmail == null || toEmail.isBlank()) {
+            return;
+        }
+        try {
+            String subj = "Re: " + (originalSubject != null ? originalSubject : "your message") + " — Madeleine Group";
+            String inner = "<p style=\"margin:0 0 12px;font-size:15px;color:#475569;\">Dear "
+                    + escapeHtml(recipientName != null ? recipientName : "visitor") + ",</p>"
+                    + "<p style=\"margin:0 0 18px;font-size:15px;line-height:1.65;color:#475569;\">"
+                    + "Thank you for contacting <strong style=\"color:#0d6e6e;\">Madeleine Group</strong>. "
+                    + "Here is our reply from <strong>" + escapeHtml(repliedByName != null ? repliedByName : "our team")
+                    + "</strong>:</p>"
+                    + "<div style=\"background:#ecfdf5;border-left:4px solid #0d6e6e;padding:16px;border-radius:8px;margin:0 0 20px;\">"
+                    + plainToHtml(replyBody != null ? replyBody : "")
+                    + "</div>"
+                    + "<p style=\"margin:0 0 8px;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;\">Your original message</p>"
+                    + "<div style=\"background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;color:#475569;\">"
+                    + plainToHtml(originalMessage != null ? originalMessage : "")
+                    + "</div>";
+            String html = buildBrandedEmailWrapper("RÉPONSE / REPLY", inner);
+            sendHtmlEmail(toEmail.trim(), subj, html);
+            log.info("Contact inquiry reply email sent to {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed contact inquiry reply email: {}", e.getMessage());
+        }
+    }
+
+    @Async
+    public void sendNewAccountDeletionRequestAlert(java.util.List<String> adminEmails, String userName,
+                                                   String userEmail, String reason) {
+        if (adminEmails == null || adminEmails.isEmpty()) {
+            return;
+        }
+        String body = "<p style=\"margin:0 0 12px;font-size:15px;color:#b45309;\"><strong>New account deletion request</strong></p>"
+                + "<p style=\"margin:0 0 8px;font-size:14px;color:#475569;\">User: <strong>"
+                + escapeHtml(userName) + "</strong></p>"
+                + "<p style=\"margin:0 0 8px;font-size:14px;color:#475569;\">Email: "
+                + escapeHtml(userEmail != null ? userEmail : "") + "</p>"
+                + "<p style=\"margin:0 0 8px;font-size:14px;color:#475569;\">Reason:</p>"
+                + "<div style=\"background:#fffbeb;border:1px solid #fcd34d;padding:12px;border-radius:8px;font-size:14px;\">"
+                + plainToHtml(reason != null && !reason.isBlank() ? reason : "(none provided)")
+                + "</div>"
+                + "<p style=\"margin:16px 0 0;font-size:13px;color:#64748b;\">Review this request in the CEO dashboard → Delete Requests.</p>";
+        String html = buildBrandedEmailWrapper("DEMANDE DE SUPPRESSION / DELETION REQUEST", body);
+        String subject = "⚠️ New account deletion request — " + (userName != null ? userName : "user");
+        for (String to : adminEmails) {
+            if (to == null || to.isBlank()) continue;
+            try {
+                sendHtmlEmail(to.trim(), subject, html);
+            } catch (Exception e) {
+                log.error("Failed deletion alert to {}: {}", to, e.getMessage());
+            }
+        }
+    }
+
+    @Async
+    public void sendAccountDeletedEmail(String toEmail, String userName, String optionalNote) {
+        if (toEmail == null || toEmail.isBlank()) {
+            return;
+        }
+        try {
+            String inner = "<p style=\"margin:0 0 14px;font-size:16px;color:#1e293b;\">Dear "
+                    + escapeHtml(userName != null ? userName : "user") + ",</p>"
+                    + "<p style=\"margin:0 0 14px;font-size:15px;line-height:1.65;color:#475569;\">"
+                    + "Your Madeleine Group account has been permanently deleted as approved.</p>"
+                    + (optionalNote != null && !optionalNote.isBlank()
+                    ? "<div style=\"background:#f1f5f9;padding:14px;border-radius:8px;margin:0 0 16px;font-size:14px;\">"
+                    + plainToHtml(optionalNote) + "</div>"
+                    : "")
+                    + "<p style=\"margin:0;font-size:14px;color:#64748b;\">Thank you for having been part of our community. "
+                    + "We wish you all the best.</p>"
+                    + "<p style=\"margin:12px 0 0;font-size:14px;color:#475569;\">— Madeleine Group</p>";
+            String html = buildBrandedEmailWrapper("COMPTE SUPPRIMÉ / ACCOUNT DELETED", inner);
+            sendHtmlEmail(toEmail.trim(), "Your account has been deleted — Madeleine Group", html);
+        } catch (Exception e) {
+            log.error("Failed account deleted email: {}", e.getMessage());
+        }
+    }
+
+    @Async
+    public void sendDeleteRequestRejectedEmail(String toEmail, String userName, String reason) {
+        if (toEmail == null || toEmail.isBlank()) {
+            return;
+        }
+        try {
+            String inner = "<p style=\"margin:0 0 14px;font-size:16px;color:#1e293b;\">Dear "
+                    + escapeHtml(userName != null ? userName : "user") + ",</p>"
+                    + "<p style=\"margin:0 0 14px;font-size:15px;line-height:1.65;color:#475569;\">"
+                    + "Your request to delete your Madeleine Group account was <strong>not approved</strong> at this time.</p>"
+                    + "<p style=\"margin:0 0 8px;font-size:13px;font-weight:600;color:#64748b;\">Reason from the team</p>"
+                    + "<div style=\"background:#fef2f2;border-left:4px solid #ef4444;padding:14px;border-radius:8px;\">"
+                    + plainToHtml(reason != null ? reason : "")
+                    + "</div>"
+                    + "<p style=\"margin:18px 0 0;font-size:14px;color:#475569;\">We hope you will continue to enjoy our services. "
+                    + "If you have questions, please contact us.</p>";
+            String html = buildBrandedEmailWrapper("DEMANDE REFUSÉE / REQUEST NOT APPROVED", inner);
+            sendHtmlEmail(toEmail.trim(), "Your deletion request was not approved — Madeleine Group", html);
+        } catch (Exception e) {
+            log.error("Failed rejection email: {}", e.getMessage());
+        }
+    }
+
     private static String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
@@ -583,5 +920,100 @@ public class EmailService {
         } catch (Exception e) {
             log.error("Failed to send birthday anniversary email to {}: {}", to, e.getMessage());
         }
+    }
+
+    /**
+     * Client acknowledgement after a payment is recorded (finance income or debt installment).
+     */
+    public void sendPaymentReceivedAcknowledgmentSync(String toEmail, String clientName, String bookingRef,
+                                                      java.math.BigDecimal amount, String paymentMethodLabel,
+                                                      java.time.LocalDate paymentDate,
+                                                      java.math.BigDecimal remainingOnBooking, boolean fullyPaid) {
+        if (toEmail == null || toEmail.isBlank()) {
+            return;
+        }
+        String name = clientName != null ? clientName : "Client";
+        String amt = amount != null ? amount.stripTrailingZeros().toPlainString() : "0";
+        String rem = remainingOnBooking != null ? remainingOnBooking.stripTrailingZeros().toPlainString() : "0";
+        String meth = paymentMethodLabel != null && !paymentMethodLabel.isBlank() ? paymentMethodLabel : "—";
+        String pdate = paymentDate != null ? paymentDate.toString() : "—";
+        String statusLine = fullyPaid
+                ? "<p style=\"margin:16px 0 0;font-size:15px;font-weight:600;color:#15803d;\">✓ Your booking balance is fully settled.</p>"
+                : "<p style=\"margin:16px 0 0;font-size:15px;color:#475569;\">Remaining on this booking: <strong>"
+                + escapeHtml(rem) + " RWF</strong></p>";
+
+        String inner = "<p style=\"margin:0 0 16px;font-size:16px;font-weight:600;color:#1e293b;\">Dear "
+                + escapeHtml(name) + ",</p>"
+                + "<p style=\"margin:0 0 16px;font-size:15px;line-height:1.65;color:#475569;\">Thank you — we have received your payment.</p>"
+                + "<div style=\"background:#f8fafc;border-radius:8px;padding:18px;border:1px solid #e2e8f0;\">"
+                + "<table role=\"presentation\" style=\"width:100%;font-size:14px;color:#334155;\">"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;width:42%;\">Booking</td><td style=\"padding:6px 0;font-weight:600;\">"
+                + escapeHtml(bookingRef != null ? bookingRef : "—") + "</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;\">Amount received</td><td style=\"padding:6px 0;font-weight:600;color:#0d6e6e;\">"
+                + escapeHtml(amt) + " RWF</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;\">Date</td><td style=\"padding:6px 0;\">" + escapeHtml(pdate) + "</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;\">Method</td><td style=\"padding:6px 0;\">" + escapeHtml(meth) + "</td></tr>"
+                + "</table></div>"
+                + statusLine
+                + "<p style=\"margin:20px 0 0;font-size:14px;color:#64748b;\">Questions? Reply to this email.</p>"
+                + "<p style=\"margin:8px 0 0;font-size:14px;color:#475569;\">Warm regards,<br><strong style=\"color:#0d6e6e;\">Madeleine Group</strong></p>";
+
+        String html = buildBrandedEmailWrapper("CONFIRMATION DE PAIEMENT / PAYMENT RECEIVED", inner);
+        sendHtmlEmailSync(toEmail.trim(), "Madeleine Group — Payment received / Paiement reçu", html);
+    }
+
+    /** Formal invoice / receipt email for a fully paid booking (HTML). */
+    public void sendInvoiceEmailSync(rw.madeleinegroup.entity.Booking booking) {
+        if (booking.getClient() == null) {
+            throw new IllegalArgumentException("Booking has no client");
+        }
+        String to = booking.getClient().getEmail();
+        if (to == null || to.isBlank()) {
+            throw new IllegalArgumentException("Client has no email address");
+        }
+        String clientName = booking.getClient().getFullName() != null ? booking.getClient().getFullName() : "Client";
+        String ref = booking.getBookingReference() != null ? booking.getBookingReference() : "—";
+        String branch = booking.getBranch() != null && booking.getBranch().getName() != null
+                ? booking.getBranch().getName() : "—";
+        String ev = booking.getEventDate() != null ? booking.getEventDate().toString() : "—";
+        String paid = booking.getPaidAmount() != null ? booking.getPaidAmount().stripTrailingZeros().toPlainString()
+                : (booking.getEstimatedAmount() != null ? booking.getEstimatedAmount().stripTrailingZeros().toPlainString() : "0");
+
+        StringBuilder rows = new StringBuilder();
+        if (booking.getBookingPackages() != null) {
+            for (rw.madeleinegroup.entity.BookingPackage bp : booking.getBookingPackages()) {
+                String pkg = bp.getPackageItem() != null && bp.getPackageItem().getName() != null
+                        ? bp.getPackageItem().getName() : "Item";
+                String line = bp.getTotalPrice() != null ? bp.getTotalPrice().stripTrailingZeros().toPlainString()
+                        : (bp.getUnitPrice() != null ? bp.getUnitPrice().stripTrailingZeros().toPlainString() : "0");
+                rows.append("<tr><td style=\"padding:10px 8px;border-bottom:1px solid #e2e8f0;\">")
+                        .append(escapeHtml(pkg)).append("</td><td style=\"padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;\">")
+                        .append(escapeHtml(line)).append(" RWF</td></tr>");
+            }
+        }
+        if (rows.length() == 0) {
+            rows.append("<tr><td colspan=\"2\" style=\"padding:10px 8px;color:#64748b;\">Package details on file</td></tr>");
+        }
+
+        String inner = "<p style=\"margin:0 0 8px;font-size:16px;font-weight:600;color:#1e293b;\">Invoice / Facture</p>"
+                + "<p style=\"margin:0 0 20px;font-size:14px;color:#64748b;\">Madeleine Group — " + escapeHtml(branch) + "</p>"
+                + "<p style=\"margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;\">Dear <strong>" + escapeHtml(clientName) + "</strong>,</p>"
+                + "<p style=\"margin:0 0 16px;font-size:15px;color:#475569;\">Below is your receipt for paid services.</p>"
+                + "<div style=\"background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #e2e8f0;\">"
+                + "<table role=\"presentation\" style=\"width:100%;font-size:14px;\">"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;\">Reference</td><td style=\"padding:6px 0;font-weight:700;\">" + escapeHtml(ref) + "</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;\">Event date</td><td style=\"padding:6px 0;\">" + escapeHtml(ev) + "</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#64748b;\">Total paid</td><td style=\"padding:6px 0;font-weight:700;color:#0d6e6e;\">"
+                + escapeHtml(paid) + " RWF</td></tr>"
+                + "</table></div>"
+                + "<table role=\"presentation\" style=\"width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;\">"
+                + "<tr style=\"background:#e8f4f4;\"><th style=\"text-align:left;padding:10px 8px;\">Item</th>"
+                + "<th style=\"text-align:right;padding:10px 8px;\">Amount</th></tr>"
+                + rows
+                + "</table>"
+                + "<p style=\"margin:0;font-size:13px;color:#64748b;\">This email serves as proof of payment. Thank you for choosing Madeleine Group.</p>";
+
+        String html = buildBrandedEmailWrapper("FACTURE / INVOICE", inner);
+        sendHtmlEmailSync(to.trim(), "Madeleine Group — Invoice / Facture " + ref, html);
     }
 }

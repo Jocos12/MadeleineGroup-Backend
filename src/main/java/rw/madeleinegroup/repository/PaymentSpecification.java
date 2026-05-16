@@ -4,6 +4,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import rw.madeleinegroup.common.enums.PaymentMethod;
 import rw.madeleinegroup.entity.Payment;
+import rw.madeleinegroup.entity.PaymentType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,7 +32,7 @@ public final class PaymentSpecification {
                 predicates.add(cb.or(clientName, clientEmail, descMatch, refMatch));
             }
             if (typeStr != null && !typeStr.isBlank()) {
-                predicates.add(cb.equal(root.get("type"), Payment.PaymentType.valueOf(typeStr.toUpperCase())));
+                predicates.add(cb.equal(root.get("type"), PaymentType.valueOf(typeStr.toUpperCase())));
             }
             if (branchId != null) {
                 predicates.add(cb.equal(root.get("branch").get("id"), branchId));
